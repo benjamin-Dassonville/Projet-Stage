@@ -1,26 +1,32 @@
-import { Router } from "express";
+import express from "express";
 
-const router = Router();
+const router = express.Router();
 
-// MVP placeholder
-router.get("/", (req, res) => {
-  res.json({
-    teams: [
-      { id: "1", name: "Équipe A" },
-      { id: "2", name: "Équipe B" },
-    ],
-  });
-});
-
+// GET /teams/:teamId/workers
 router.get("/:teamId/workers", (req, res) => {
   const { teamId } = req.params;
-  res.json({
-    teamId,
-    workers: [
-      { id: "42", firstName: "Loïc", lastName: "Durant", status: "NOT_CHECKED" },
-    ],
-  });
+
+  // Données FAKE pour le moment
+  res.json([
+    {
+      id: "1",
+      name: "Loïc Durant",
+      status: "OK",
+      teamId,
+    },
+    {
+      id: "2",
+      name: "Jean Martin",
+      status: "KO",
+      teamId,
+    },
+    {
+      id: "3",
+      name: "Paul Leroy",
+      status: "ABS",
+      teamId,
+    },
+  ]);
 });
 
 export default router;
-
