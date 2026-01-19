@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api/api_client.dart';
+import '../ui/status_badge.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -146,7 +147,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         final w = koWorkers[i];
                         return ListTile(
                           title: Text(w['name']),
-                          trailing: const Text('KO'),
+                          trailing: const StatusBadge(status: 'KO'),
                         );
                       },
                     ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../ui/status_badge.dart';
 
 import '../api/api_client.dart';
 
@@ -53,18 +54,15 @@ class _TeamPageState extends State<TeamPage> {
       final api = ApiClient();
       await api.dio.post(
         '/attendance',
-        data: {
-          'workerId': w['id'],
-          'status': newStatus,
-        },
+        data: {'workerId': w['id'], 'status': newStatus},
       );
 
       await loadWorkers(); // refresh liste après changement
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur changement présence: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur changement présence: $e')));
     }
   }
 
@@ -105,13 +103,19 @@ class _TeamPageState extends State<TeamPage> {
           final isAbsent = attendance == 'ABS';
 
           return ListTile(
-            title: Text(w['name']),
+            title: Text(
+              w['name'],
+              style: TextStyle(
+                color: isAbsent ? Colors.grey : null,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             subtitle: Text(isAbsent ? 'Absent' : 'Présent'),
             trailing: Wrap(
               spacing: 12,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(status),
+                StatusBadge(status: status),
                 OutlinedButton(
                   onPressed: () => toggleAttendance(w as Map),
                   child: Text(isAbsent ? 'Mettre présent' : 'Mettre ABS'),
@@ -121,8 +125,9 @@ class _TeamPageState extends State<TeamPage> {
             onTap: isAbsent
                 ? null
                 : () async {
-                    final changed =
-                        await context.push('/workers/${w['id']}/check');
+                    final changed = await context.push(
+                      '/workers/${w['id']}/check',
+                    );
                     if (changed == true) {
                       loadWorkers();
                     }
