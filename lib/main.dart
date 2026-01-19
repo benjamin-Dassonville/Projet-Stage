@@ -12,8 +12,11 @@ Future<void> main() async {
   runApp(App(auth: auth));
 }
 
+
 class App extends StatelessWidget {
   final AuthState auth;
+
+  
 
   const App({super.key, required this.auth});
 

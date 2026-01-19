@@ -9,6 +9,10 @@ import workersRoutes from "./routes/workers.js";
 import checksRoutes from "./routes/checks.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import attendanceRoutes from "./routes/attendance.js";
+import chefsRouter from "./routes/chefs.js";
+import teamsMetaRouter from "./routes/teams_meta.js";
+
+
 
 dotenv.config();
 
@@ -24,6 +28,9 @@ app.use("/workers", requireAuth, workersRoutes);
 app.use("/checks", requireAuth, checksRoutes);
 app.use("/dashboard", requireAuth, dashboardRoutes);
 app.use("/attendance", requireAuth, attendanceRoutes);
+app.use("/chefs", chefsRouter);
+app.use("/teams-meta", requireAuth, teamsMetaRouter);
+app.use("/dashboard", requireAuth, dashboardRoutes);
 
 
 const port = process.env.PORT || 3000;

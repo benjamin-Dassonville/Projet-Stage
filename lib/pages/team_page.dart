@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../ui/status_badge.dart';
 
 import '../api/api_client.dart';
+import '../ui/status_badge.dart';
 
 class TeamPage extends StatefulWidget {
   final String teamId;
@@ -21,6 +21,14 @@ class _TeamPageState extends State<TeamPage> {
   void initState() {
     super.initState();
     loadWorkers();
+  }
+
+  void _back(BuildContext context) {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      context.go('/');
+    }
   }
 
   Future<void> loadWorkers() async {
@@ -56,13 +64,12 @@ class _TeamPageState extends State<TeamPage> {
         '/attendance',
         data: {'workerId': w['id'], 'status': newStatus},
       );
-
-      await loadWorkers(); // refresh liste après changement
+      await loadWorkers();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Erreur changement présence: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur changement présence: $e')),
+      );
     }
   }
 
@@ -74,16 +81,37 @@ class _TeamPageState extends State<TeamPage> {
 
     if (error != null) {
       return Scaffold(
-        appBar: AppBar(title: Text('Équipe ${widget.teamId}')),
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => _back(context),
+          ),
+          title: Text('Équipe ${widget.teamId}'),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(16),
-          child: Text('Erreur API: $error'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Erreur API: $error'),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: loadWorkers,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Réessayer'),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _back(context),
+        ),
         title: Text('Équipe ${widget.teamId}'),
         actions: [
           IconButton(
@@ -93,8 +121,9 @@ class _TeamPageState extends State<TeamPage> {
           ),
         ],
       ),
-      body: ListView.builder(
+      body: ListView.separated(
         itemCount: workers.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (_, i) {
           final w = workers[i];
 
@@ -103,34 +132,45 @@ class _TeamPageState extends State<TeamPage> {
           final isAbsent = attendance == 'ABS';
 
           return ListTile(
+            dense: true,
             title: Text(
               w['name'],
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: isAbsent ? Colors.grey : null,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            subtitle: Text(isAbsent ? 'Absent' : 'Présent'),
-            trailing: Wrap(
-              spacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.center,
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                StatusBadge(status: status),
-                OutlinedButton(
-                  onPressed: () => toggleAttendance(w as Map),
-                  child: Text(isAbsent ? 'Mettre présent' : 'Mettre ABS'),
+                Text(isAbsent ? 'Absent' : 'Présent'),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    height: 32,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () => toggleAttendance(w as Map),
+                      child: Text(isAbsent ? 'Mettre présent' : 'Mettre ABS'),
+                    ),
+                  ),
                 ),
               ],
             ),
+            trailing: StatusBadge(status: status),
             onTap: isAbsent
                 ? null
                 : () async {
-                    final changed = await context.push(
-                      '/workers/${w['id']}/check',
-                    );
-                    if (changed == true) {
-                      loadWorkers();
-                    }
+                    final changed =
+                        await context.push('/workers/${w['id']}/check');
+                    if (changed == true) loadWorkers();
                   },
           );
         },
