@@ -1,37 +1,35 @@
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 
-import { requireAuth } from "./middleware/auth.js";
-
-import teamsRoutes from "./routes/teams.js";
-import workersRoutes from "./routes/workers.js";
-import checksRoutes from "./routes/checks.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import attendanceRoutes from "./routes/attendance.js";
 import chefsRouter from "./routes/chefs.js";
 import teamsMetaRouter from "./routes/teams_meta.js";
-
-
-
-dotenv.config();
+import healthRoutes from "./routes/health.js";
+import checksRoutes from "./routes/checks.js";
+import workersRoutes from "./routes/workers.js";
+import teamsRoutes from "./routes/teams.js";
+import { requireAuth } from "./middleware/auth.js";
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
+// Connexion DB (charge aussi le .env via db.js)
+await import("./db.js");
+
 app.get("/health", (_, res) => res.json({ ok: true }));
 
-// Routes protégées
 app.use("/teams", requireAuth, teamsRoutes);
 app.use("/workers", requireAuth, workersRoutes);
 app.use("/checks", requireAuth, checksRoutes);
 app.use("/dashboard", requireAuth, dashboardRoutes);
 app.use("/attendance", requireAuth, attendanceRoutes);
-app.use("/chefs", chefsRouter);
 app.use("/teams-meta", requireAuth, teamsMetaRouter);
-app.use("/dashboard", requireAuth, dashboardRoutes);
 
+app.use("/chefs", chefsRouter);
+app.use("/health", healthRoutes);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`API running on :${port}`));

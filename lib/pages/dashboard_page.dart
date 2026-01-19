@@ -48,8 +48,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String teamName(String? teamId) {
     if (teamId == null) return '—';
-    final t = teams.cast<Map<String, dynamic>>().where((x) => '${x['id']}' == '$teamId');
-    if (t.isEmpty) return '$teamId';
+    final t = teams.cast<Map<String, dynamic>>().where((x) => '${x['id']}' == teamId);
+    if (t.isEmpty) return teamId;
     return '${t.first['name']}';
   }
 
@@ -351,7 +351,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
-                          value: range,
+                          initialValue: range,
                           decoration: const InputDecoration(
                             labelText: 'Période',
                             border: OutlineInputBorder(),
@@ -373,7 +373,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           const Text('Chargement des chefs/équipes...')
                         else
                           DropdownButtonFormField<String?>(
-                            value: selectedChefId,
+                            initialValue: selectedChefId,
                             decoration: const InputDecoration(
                               labelText: "Chef d'équipe (optionnel)",
                               border: OutlineInputBorder(),
@@ -401,7 +401,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         const SizedBox(height: 12),
                         if (!loadingMeta)
                           DropdownButtonFormField<String?>(
-                            value: selectedTeamId,
+                            initialValue: selectedTeamId,
                             decoration: const InputDecoration(
                               labelText: 'Équipe (optionnel)',
                               border: OutlineInputBorder(),
