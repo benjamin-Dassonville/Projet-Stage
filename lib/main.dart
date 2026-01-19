@@ -21,6 +21,7 @@ class App extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'EPI Control',
+      theme: ThemeData(useMaterial3: true),
       routerConfig: buildRouter(auth),
     );
   }

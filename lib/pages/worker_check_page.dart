@@ -18,6 +18,19 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
   List equipment = [];
   final Map<String, String> statusByEquipId = {};
 
+  String labelForStatus(String s) {
+    switch (s) {
+      case 'OK':
+        return 'OK';
+      case 'MANQUANT':
+        return 'Manquant';
+      case 'KO':
+        return 'KO';
+      default:
+        return s;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -146,27 +159,18 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: ListTile(
                         title: Text(e['name']),
-                        subtitle: Text('Statut: $current'),
-                        trailing: Wrap(
-                          spacing: 8,
-                          children: [
-                            TextButton(
-                              onPressed: () =>
-                                  setState(() => statusByEquipId[id] = 'OK'),
-                              child: const Text('OK'),
-                            ),
-                            TextButton(
-                              onPressed: () => setState(
-                                () => statusByEquipId[id] = 'MANQUANT',
-                              ),
-                              child: const Text('Manquant'),
-                            ),
-                            TextButton(
-                              onPressed: () =>
-                                  setState(() => statusByEquipId[id] = 'KO'),
-                              child: const Text('KO'),
-                            ),
+                        subtitle: Text('Statut: ${labelForStatus(current)}'),
+                        trailing: SegmentedButton<String>(
+                          segments: const <ButtonSegment<String>>[
+                            ButtonSegment(value: 'OK', label: Text('OK')),
+                            ButtonSegment(value: 'MANQUANT', label: Text('Manquant')),
+                            ButtonSegment(value: 'KO', label: Text('KO')),
                           ],
+                          selected: <String>{current},
+                          onSelectionChanged: (newSelection) {
+                            final v = newSelection.first;
+                            setState(() => statusByEquipId[id] = v);
+                          },
                         ),
                       ),
                     ),

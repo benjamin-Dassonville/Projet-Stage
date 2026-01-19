@@ -16,6 +16,11 @@ class _DashboardPageState extends State<DashboardPage> {
   Map<String, dynamic>? kpi;
   List koWorkers = [];
 
+  double safeRatio(num a, num b) {
+    if (b == 0) return 0;
+    return a / b;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -57,10 +62,7 @@ class _DashboardPageState extends State<DashboardPage> {
           children: [
             Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text(
-              '${value ?? '-'}',
-              style: const TextStyle(fontSize: 26),
-            ),
+            Text('${value ?? '-'}', style: const TextStyle(fontSize: 26)),
           ],
         ),
       ),
@@ -69,8 +71,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   int crossAxisCountForWidth(double w) {
     if (w >= 1100) return 3; // grand écran
-    if (w >= 700) return 2;  // tablette / web moyen
-    return 1;                // mobile
+    if (w >= 700) return 2; // tablette / web moyen
+    return 1; // mobile
   }
 
   @override
@@ -126,6 +128,42 @@ class _DashboardPageState extends State<DashboardPage> {
                     kpiCard('Non conformes (KO)', data['ko']),
                     kpiCard('Non contrôlés', data['nonControles']),
                   ],
+                ),
+                const SizedBox(height: 16),
+
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Taux de conformité (sur les présents)',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 12),
+                        Builder(
+                          builder: (_) {
+                            final ok = (data['ok'] ?? 0) as num;
+                            final presents = (data['presents'] ?? 0) as num;
+                            final ratio = safeRatio(ok, presents);
+                            final pct = (ratio * 100).round();
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                LinearProgressIndicator(value: ratio),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '$pct% ($ok conformes / $presents présents)',
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 const Text(
