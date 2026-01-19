@@ -29,9 +29,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
     try {
       final api = ApiClient();
-      final res = await api.dio.get('/dashboard/summary', queryParameters: {
-        'teamId': '1', // MVP: équipe 1 en dur
-      });
+      final res = await api.dio.get(
+        '/dashboard/summary',
+        queryParameters: {'teamId': '1'}, // MVP
+      );
 
       setState(() {
         kpi = (res.data['kpi'] as Map).cast<String, dynamic>();
@@ -56,13 +57,19 @@ class _DashboardPageState extends State<DashboardPage> {
             Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text(
-              '$value',
-              style: const TextStyle(fontSize: 24),
+              '${value ?? '-'}',
+              style: const TextStyle(fontSize: 26),
             ),
           ],
         ),
       ),
     );
+  }
+
+  int crossAxisCountForWidth(double w) {
+    if (w >= 1100) return 3; // grand écran
+    if (w >= 700) return 2;  // tablette / web moyen
+    return 1;                // mobile
   }
 
   @override
@@ -94,49 +101,60 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 2.2,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final cols = crossAxisCountForWidth(constraints.maxWidth);
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                kpiCard('Total', data['total']),
-                kpiCard('Présents', data['presents']),
-                kpiCard('Absents', data['absents']),
-                kpiCard('Conformes (OK)', data['ok']),
-                kpiCard('Non conformes (KO)', data['ko']),
-                kpiCard('Non contrôlés', data['nonControles']),
+                GridView.count(
+                  crossAxisCount: cols,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: cols == 1 ? 4.5 : 2.2,
+                  children: [
+                    kpiCard('Total', data['total']),
+                    kpiCard('Présents', data['presents']),
+                    kpiCard('Absents', data['absents']),
+                    kpiCard('Conformes (OK)', data['ok']),
+                    kpiCard('Non conformes (KO)', data['ko']),
+                    kpiCard('Non contrôlés', data['nonControles']),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Personnes KO',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+
+                if (koWorkers.isEmpty)
+                  const Text('Aucune personne KO ✅')
+                else
+                  Card(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: koWorkers.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final w = koWorkers[i];
+                        return ListTile(
+                          title: Text(w['name']),
+                          trailing: const Text('KO'),
+                        );
+                      },
+                    ),
+                  ),
               ],
             ),
-            const SizedBox(height: 16),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Personnes KO',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView.separated(
-                itemCount: koWorkers.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (_, i) {
-                  final w = koWorkers[i];
-                  return ListTile(
-                    title: Text(w['name']),
-                    trailing: const Text('KO'),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
