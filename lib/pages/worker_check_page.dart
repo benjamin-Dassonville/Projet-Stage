@@ -11,6 +11,7 @@ class WorkerCheckPage extends StatefulWidget {
 
 class _WorkerCheckPageState extends State<WorkerCheckPage> {
   bool loading = true;
+  bool submitting = false;
   String? error;
 
   String role = '';
@@ -21,6 +22,43 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
   void initState() {
     super.initState();
     loadRequiredEquipment();
+  }
+
+  Future<void> submitCheck() async {
+    setState(() => submitting = true);
+
+    try {
+      final api = ApiClient();
+
+      final items = equipment.map((e) {
+        final id = e['id'] as String;
+        return {'equipmentId': id, 'status': statusByEquipId[id] ?? 'OK'};
+      }).toList();
+
+      final payload = {
+        'workerId': widget.workerId,
+        'teamId': '1', // MVP: en dur pour l’instant
+        'result': isCompliant ? 'CONFORME' : 'NON_CONFORME',
+        'items': items,
+        'createdAt': DateTime.now().toIso8601String(),
+      };
+
+      await api.dio.post('/checks', data: payload);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Contrôle envoyé ✅')));
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur envoi: $e')));
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
   }
 
   Future<void> loadRequiredEquipment() async {
@@ -135,6 +173,10 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
                   );
                 },
               ),
+            ),
+            ElevatedButton(
+              onPressed: submitting ? null : submitCheck,
+              child: Text(submitting ? 'Envoi...' : 'Valider le contrôle'),
             ),
           ],
         ),
