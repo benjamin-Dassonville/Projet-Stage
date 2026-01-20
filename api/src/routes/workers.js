@@ -1,35 +1,42 @@
-import { Router } from "express";
+import express from "express";
+import { pool } from "../db.js";
 
-const router = Router();
+const router = express.Router();
 
-// GET /workers/:workerId
-// Infos du travailleur
-router.get("/:workerId", (req, res) => {
-  const { workerId } = req.params;
+// GET /workers/:workerId (DB)
+router.get("/:workerId", async (req, res) => {
+  const workerId = String(req.params.workerId);
 
-  res.json({
-    id: workerId,
-    firstName: "Loïc",
-    lastName: "Durant",
-    employeeNumber: "12345",
-  });
-});
+  try {
+    const { rows } = await pool.query(
+      `
+      select
+        w.id,
+        w.name,
+        w.employee_number as "employeeNumber",
+        w.role,
+        w.attendance,
+        w.status,
+        w.controlled,
+        w.last_check_at as "lastCheckAt",
+        w.team_id as "teamId",
+        t.name as "teamName"
+      from workers w
+      join teams t on t.id = w.team_id
+      where w.id = $1
+      limit 1
+      `,
+      [workerId]
+    );
 
-// GET /workers/:workerId/required-equipment
-// Équipements requis pour la mission (FAKE pour MVP)
-router.get("/:workerId/required-equipment", (req, res) => {
-  const { workerId } = req.params;
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Worker not found" });
+    }
 
-  res.json({
-    workerId,
-    role: "debroussailleur",
-    equipment: [
-      { id: "e1", name: "Chaussures de sécurité" },
-      { id: "e2", name: "Casque" },
-      { id: "e3", name: "Gants" },
-      { id: "e4", name: "Visière" },
-    ],
-  });
+    return res.json(rows[0]);
+  } catch (e) {
+    return res.status(500).json({ error: "Server error" });
+  }
 });
 
 export default router;
