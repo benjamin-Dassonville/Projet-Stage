@@ -32,4 +32,16 @@ app.use("/chefs", chefsRouter);
 app.use("/health", healthRoutes);
 
 const port = process.env.PORT || 3000;
+
+// 404 JSON (route non trouvée)
+app.use((req, res) => {
+  res.status(404).json({ error: "Not found", path: req.originalUrl });
+});
+
+// Error handler JSON (erreurs serveur)
+app.use((err, req, res, next) => {
+  console.error("API ERROR:", err);
+  res.status(500).json({ error: "Server error" });
+});
+
 app.listen(port, () => console.log(`API running on :${port}`));

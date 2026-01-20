@@ -3,32 +3,26 @@ import { pool } from "../db.js";
 
 const router = express.Router();
 
-function computeResultFromItems(items) {
-  // NON_CONFORME si au moins un item est KO ou MANQUANT
-  const nonOk = items.some(
-    (it) => it?.status === "KO" || it?.status === "MANQUANT"
-  );
-  return nonOk ? "NON_CONFORME" : "CONFORME";
+function computeResult(items) {
+  // règle MVP: si au moins 1 item MANQUANT ou KO => NON_CONFORME sinon CONFORME
+  const bad = items?.some((it) => it.status === "MANQUANT" || it.status === "KO");
+  return bad ? "NON_CONFORME" : "CONFORME";
 }
 
-// POST /checks
-// body: { workerId, teamId, items:[{equipmentId,status}], createdAt? }
 router.post("/", async (req, res) => {
-  const workerId = req.body?.workerId ? String(req.body.workerId) : null;
-  const teamId = req.body?.teamId ? String(req.body.teamId) : null;
-  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  const { workerId, teamId, items } = req.body;
 
-  if (!workerId || !teamId) {
-    return res.status(400).json({ error: "workerId/teamId required" });
+  if (!workerId || !teamId || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "Invalid payload" });
   }
 
-  // validation items
+  // validation items minimale
   for (const it of items) {
-    const equipmentId = it?.equipmentId ? String(it.equipmentId) : null;
-    const status = it?.status ? String(it.status) : null;
-    const okStatus = status === "OK" || status === "MANQUANT" || status === "KO";
-    if (!equipmentId || !okStatus) {
+    if (!it.equipmentId || !it.status) {
       return res.status(400).json({ error: "Invalid items payload" });
+    }
+    if (!["OK", "MANQUANT", "KO"].includes(it.status)) {
+      return res.status(400).json({ error: "Invalid item status" });
     }
   }
 
@@ -36,89 +30,83 @@ router.post("/", async (req, res) => {
   try {
     await client.query("begin");
 
-    // 1) lock worker row (évite concurrence)
-    const wRes = await client.query(
-      `
-      select id, attendance, role
-      from workers
-      where id = $1
-      for update
-      `,
-      [workerId]
+    // 1) vérifier existence worker & cohérence team_id
+    const w = await client.query(
+      `select id, team_id, attendance from workers where id = $1 limit 1`,
+      [String(workerId)]
     );
 
-    if (wRes.rowCount === 0) {
+    if (w.rows.length === 0) {
       await client.query("rollback");
       return res.status(404).json({ error: "Worker not found" });
     }
 
-    const worker = wRes.rows[0];
-    if (worker.attendance === "ABS") {
+    const worker = w.rows[0];
+    if (String(worker.team_id) !== String(teamId)) {
       await client.query("rollback");
-      return res
-        .status(400)
-        .json({ error: "Worker is ABSENT, cannot submit check" });
+      return res.status(400).json({ error: "Worker not in this team" });
     }
 
-    // 2) vérifier team existe (et cohérence worker.team_id)
-    const tRes = await client.query(
-      `select id from teams where id = $1 limit 1`,
-      [teamId]
-    );
-    if (tRes.rowCount === 0) {
-      await client.query("rollback");
-      return res.status(404).json({ error: "Team not found" });
-    }
+    // 2) insérer check (le trigger DB bloquera si attendance=ABS)
+    const result = computeResult(items);
 
-    // 3) calcul résultat depuis items
-    const result = computeResultFromItems(items);
-    const newStatus = result === "CONFORME" ? "OK" : "KO";
-
-    // 4) insert check
-    const createdAt = req.body?.createdAt
-      ? new Date(req.body.createdAt)
-      : new Date();
-
-    const checkRes = await client.query(
+    const inserted = await client.query(
       `
-      insert into checks (worker_id, team_id, role, result, created_at)
-      values ($1, $2, $3, $4, $5)
+      insert into checks(worker_id, team_id, result)
+      values ($1, $2, $3)
       returning id
       `,
-      [workerId, teamId, worker.role ?? null, result, createdAt]
+      [String(workerId), String(teamId), result]
     );
 
-    const checkId = String(checkRes.rows[0].id);
+    const checkId = inserted.rows[0].id;
 
-    // 5) insert items (si vide, on autorise quand même)
+    // 3) insérer les items
     for (const it of items) {
       await client.query(
         `
-        insert into check_items (check_id, equipment_id, status)
+        insert into check_items(check_id, equipment_id, status)
         values ($1, $2, $3)
         `,
-        [checkId, String(it.equipmentId), String(it.status)]
+        [checkId, String(it.equipmentId), it.status]
       );
     }
 
-    // 6) update worker
+    // 4) update worker (si tu as déjà trigger qui le fait, c’est OK de le redire, c’est idempotent)
+    const newStatus = result === "CONFORME" ? "OK" : "KO";
+
     await client.query(
       `
       update workers
-      set status = $2,
-          controlled = true,
-          last_check_at = $3
+      set
+        status = $2,
+        controlled = true,
+        last_check_at = now()
       where id = $1
       `,
-      [workerId, newStatus, createdAt]
+      [String(workerId), newStatus]
     );
 
     await client.query("commit");
-    return res.json({ ok: true, checkId, result });
+    return res.json({ ok: true, checkId: String(checkId), result });
   } catch (e) {
     try {
       await client.query("rollback");
-    } catch (_) {}
+    } catch {}
+
+    // Gestion propre des erreurs trigger / contraintes
+    const msg = String(e?.message ?? "");
+
+    // ton trigger ABSENT renvoie typiquement "Worker is ABSENT, cannot submit check"
+    if (msg.toLowerCase().includes("absent")) {
+      return res.status(400).json({ error: "Worker is ABSENT, cannot submit check" });
+    }
+
+    // FK equipment inconnu
+    if (msg.toLowerCase().includes("violates foreign key constraint")) {
+      return res.status(400).json({ error: "Invalid foreign key (worker/team/equipment)" });
+    }
+
     console.error("POST /checks error:", e);
     return res.status(500).json({ error: "Server error" });
   } finally {
