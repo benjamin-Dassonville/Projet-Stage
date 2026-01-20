@@ -1,11 +1,17 @@
-import express from "express";
-import { getTeamWorkers } from "../helpers/teamWorkers.js";
+import { Router } from "express";
+import { getTeamWorkersDb } from "../helpers/teamWorkersDb.js";
 
-const router = express.Router();
+const router = Router();
 
-router.get("/:teamId/workers", (req, res) => {
-  const { teamId } = req.params;
-  res.json(getTeamWorkers(teamId));
+// GET /teams/:teamId/workers
+router.get("/:teamId/workers", async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    const workers = await getTeamWorkersDb(String(teamId));
+    res.json(workers);
+  } catch (e) {
+    res.status(500).json({ error: "DB error", details: String(e?.message ?? e) });
+  }
 });
 
 export default router;

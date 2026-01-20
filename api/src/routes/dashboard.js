@@ -1,5 +1,5 @@
 import express from "express";
-import { getTeamWorkers } from "../helpers/teamWorkers.js";
+import { getTeamWorkersDb } from "../helpers/teamWorkersDb.js";
 import { teams } from "../store.js";
 
 const router = express.Router();
