@@ -1,16 +1,50 @@
-import { Router } from "express";
-import { getTeamWorkersDb } from "../helpers/teamWorkersDb.js";
+import express from "express";
+import { pool } from "../db.js";
 
-const router = Router();
+const router = express.Router();
 
-// GET /teams/:teamId/workers
+/**
+ * GET /teams/:teamId/workers
+ * [{ id, name, status, attendance, teamId, controlled, lastCheckAt }]
+ */
 router.get("/:teamId/workers", async (req, res) => {
+  const teamId = String(req.params.teamId);
+
   try {
-    const { teamId } = req.params;
-    const workers = await getTeamWorkersDb(String(teamId));
-    res.json(workers);
+    const team = await pool.query(`select 1 from teams where id = $1`, [teamId]);
+    if (team.rowCount === 0) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const { rows } = await pool.query(
+      `
+      select
+        w.id,
+        w.name,
+        w.status,
+        w.attendance,
+        w.team_id as "teamId",
+        w.controlled,
+        w.last_check_at as "lastCheckAt"
+      from workers w
+      where w.team_id = $1
+      order by
+        -- 1) PRESENT avant ABS
+        case when w.attendance = 'PRESENT' then 0 else 1 end,
+        -- 2) non contrôlés en haut
+        case when w.controlled = false then 0 else 1 end,
+        -- 3) KO avant OK
+        case when w.status = 'KO' then 0 else 1 end,
+        -- 4) nom
+        w.name asc
+      `,
+      [teamId]
+    );
+
+    return res.json(rows);
   } catch (e) {
-    res.status(500).json({ error: "DB error", details: String(e?.message ?? e) });
+    console.error("GET /teams/:teamId/workers error:", e);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 

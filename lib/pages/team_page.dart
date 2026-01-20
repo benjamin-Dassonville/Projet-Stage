@@ -146,6 +146,23 @@ class _TeamPageState extends State<TeamPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(isAbsent ? 'Absent' : 'Présent'),
+
+                if ((w['controlled'] == false) && !isAbsent) ...[
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Non contrôlé',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+
+                if (w['lastCheckAt'] != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Dernier contrôle: ${w['lastCheckAt']}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerLeft,
