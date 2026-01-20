@@ -3,34 +3,32 @@ import { pool } from "../db.js";
 
 const router = express.Router();
 
-function computeResult(items) {
-  // CONFORME si tous OK, sinon NON_CONFORME
-  const nonOk = items.some((it) => it.status !== "OK");
+function computeResultFromItems(items) {
+  // NON_CONFORME si au moins un item est KO ou MANQUANT
+  const nonOk = items.some(
+    (it) => it?.status === "KO" || it?.status === "MANQUANT"
+  );
   return nonOk ? "NON_CONFORME" : "CONFORME";
 }
 
-function statusFromResult(result) {
-  return result === "CONFORME" ? "OK" : "KO";
-}
-
 // POST /checks
-// body attendu:
-// {
-//   "workerId": "1-2",
-//   "teamId": "1",
-//   "items": [{ "equipmentId":"e1", "status":"OK|MANQUANT|KO" }, ...],
-//   "createdAt": "2026-01-20T10:00:00.000Z" (optionnel)
-// }
+// body: { workerId, teamId, items:[{equipmentId,status}], createdAt? }
 router.post("/", async (req, res) => {
-  const { workerId, teamId, items, createdAt } = req.body ?? {};
+  const workerId = req.body?.workerId ? String(req.body.workerId) : null;
+  const teamId = req.body?.teamId ? String(req.body.teamId) : null;
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
 
-  if (!workerId || !teamId || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: "Invalid payload" });
+  if (!workerId || !teamId) {
+    return res.status(400).json({ error: "workerId/teamId required" });
   }
 
+  // validation items
   for (const it of items) {
-    if (!it?.equipmentId || !["OK", "MANQUANT", "KO"].includes(it.status)) {
-      return res.status(400).json({ error: "Invalid items" });
+    const equipmentId = it?.equipmentId ? String(it.equipmentId) : null;
+    const status = it?.status ? String(it.status) : null;
+    const okStatus = status === "OK" || status === "MANQUANT" || status === "KO";
+    if (!equipmentId || !okStatus) {
+      return res.status(400).json({ error: "Invalid items payload" });
     }
   }
 
@@ -38,7 +36,7 @@ router.post("/", async (req, res) => {
   try {
     await client.query("begin");
 
-    // 1) Vérifier worker + présence
+    // 1) lock worker row (évite concurrence)
     const wRes = await client.query(
       `
       select id, attendance, role
@@ -46,37 +44,53 @@ router.post("/", async (req, res) => {
       where id = $1
       for update
       `,
-      [String(workerId)]
+      [workerId]
     );
 
-    if (wRes.rows.length === 0) {
+    if (wRes.rowCount === 0) {
       await client.query("rollback");
       return res.status(404).json({ error: "Worker not found" });
     }
 
     const worker = wRes.rows[0];
-
     if (worker.attendance === "ABS") {
       await client.query("rollback");
-      return res.status(400).json({ error: "Worker is ABSENT, cannot submit check" });
+      return res
+        .status(400)
+        .json({ error: "Worker is ABSENT, cannot submit check" });
     }
 
-    // 2) Calculer result côté serveur
-    const result = computeResult(items);
-    const newStatus = statusFromResult(result);
+    // 2) vérifier team existe (et cohérence worker.team_id)
+    const tRes = await client.query(
+      `select id from teams where id = $1 limit 1`,
+      [teamId]
+    );
+    if (tRes.rowCount === 0) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Team not found" });
+    }
 
-    // 3) Insérer checks
+    // 3) calcul résultat depuis items
+    const result = computeResultFromItems(items);
+    const newStatus = result === "CONFORME" ? "OK" : "KO";
+
+    // 4) insert check
+    const createdAt = req.body?.createdAt
+      ? new Date(req.body.createdAt)
+      : new Date();
+
     const checkRes = await client.query(
       `
       insert into checks (worker_id, team_id, role, result, created_at)
-      values ($1, $2, $3, $4, coalesce($5::timestamptz, now()))
+      values ($1, $2, $3, $4, $5)
       returning id
       `,
-      [String(workerId), String(teamId), worker.role ?? null, result, createdAt ?? null]
+      [workerId, teamId, worker.role ?? null, result, createdAt]
     );
-    const checkId = checkRes.rows[0].id;
 
-    // 4) Insérer check_items
+    const checkId = String(checkRes.rows[0].id);
+
+    // 5) insert items (si vide, on autorise quand même)
     for (const it of items) {
       await client.query(
         `
@@ -87,22 +101,24 @@ router.post("/", async (req, res) => {
       );
     }
 
-    // 5) Mettre à jour worker
+    // 6) update worker
     await client.query(
       `
       update workers
       set status = $2,
           controlled = true,
-          last_check_at = now()
+          last_check_at = $3
       where id = $1
       `,
-      [String(workerId), newStatus]
+      [workerId, newStatus, createdAt]
     );
 
     await client.query("commit");
-    return res.json({ ok: true, checkId: String(checkId), result });
+    return res.json({ ok: true, checkId, result });
   } catch (e) {
-    await client.query("rollback");
+    try {
+      await client.query("rollback");
+    } catch (_) {}
     console.error("POST /checks error:", e);
     return res.status(500).json({ error: "Server error" });
   } finally {

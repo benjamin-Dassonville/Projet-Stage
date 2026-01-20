@@ -77,12 +77,7 @@ GoRouter createRouter(AuthState auth) {
       // Worker check : chef + admin
       GoRoute(
         path: '/workers/:workerId/check',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.chef, AppRole.admin},
-        ),
-        builder: (_, state) {
+        builder: (context, state) {
           final workerId = state.pathParameters['workerId']!;
           return WorkerCheckPage(workerId: workerId);
         },
