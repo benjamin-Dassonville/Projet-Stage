@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -103,6 +105,22 @@ class _TeamPageState extends State<TeamPage> {
             ],
           ),
         ),
+      );
+    }
+
+    if (workers.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => _back(context),
+          ),
+          title: Text('Équipe ${widget.teamId}'),
+          actions: [
+            IconButton(onPressed: loadWorkers, icon: const Icon(Icons.refresh)),
+          ],
+        ),
+        body: const Center(child: Text("Aucun travailleur dans cette équipe.")),
       );
     }
 

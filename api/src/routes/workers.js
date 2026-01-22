@@ -3,6 +3,38 @@ import { pool } from "../db.js";
 
 const router = express.Router();
 
+const UNASSIGNED_TEAM_ID = process.env.UNASSIGNED_TEAM_ID || "UNASSIGNED";
+
+/**
+ * GET /workers/unassigned
+ * Liste les travailleurs non affectés (team_id = UNASSIGNED)
+ */
+router.get("/unassigned", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `
+      select
+        w.id,
+        w.name,
+        w.status,
+        w.attendance,
+        w.team_id as "teamId",
+        w.controlled,
+        w.last_check_at as "lastCheckAt"
+      from workers w
+      where w.team_id = $1
+      order by w.name asc
+      `,
+      [UNASSIGNED_TEAM_ID]
+    );
+
+    return res.json({ teamId: UNASSIGNED_TEAM_ID, count: rows.length, workers: rows });
+  } catch (e) {
+    console.error("GET /workers/unassigned error:", e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 /**
  * GET /workers/:workerId
  * Infos du travailleur (DB)
@@ -201,6 +233,115 @@ router.get("/:workerId/checks", async (req, res) => {
     });
   } catch (e) {
     console.error("GET /workers/:workerId/checks error:", e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+/**
+ * PATCH /workers/:workerId/team
+ * Body: { teamId: "..." }
+ */
+router.patch("/:workerId/team", async (req, res) => {
+  const workerId = String(req.params.workerId);
+  const teamId = req.body?.teamId ? String(req.body.teamId) : null;
+
+  if (!teamId) {
+    return res.status(400).json({ error: "Missing teamId" });
+  }
+
+  try {
+    const t = await pool.query(`select 1 from teams where id = $1`, [teamId]);
+    if (t.rowCount === 0) return res.status(404).json({ error: "Team not found" });
+
+    const upd = await pool.query(
+      `
+      update workers
+      set team_id = $1
+      where id = $2
+      returning
+        id, name, status, attendance,
+        team_id as "teamId",
+        controlled,
+        last_check_at as "lastCheckAt"
+      `,
+      [teamId, workerId]
+    );
+
+    if (upd.rowCount === 0) return res.status(404).json({ error: "Worker not found" });
+
+    return res.json({ ok: true, mode: "moved", worker: upd.rows[0] });
+  } catch (e) {
+    console.error("PATCH /workers/:workerId/team error:", e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PATCH /workers/:workerId/role
+// Body: { role: "debroussailleur" } ou { role: null }
+router.patch("/:workerId/role", async (req, res) => {
+  const workerId = String(req.params.workerId);
+  const role = req.body?.role === null ? null : String(req.body?.role || "").trim();
+
+  try {
+    const upd = await pool.query(
+      `
+      update workers
+      set role = $1
+      where id = $2
+      returning
+        id, name,
+        employee_number as "employeeNumber",
+        role,
+        attendance, status, controlled,
+        last_check_at as "lastCheckAt",
+        team_id as "teamId"
+      `,
+      [role === "" ? null : role, workerId]
+    );
+
+    if (upd.rowCount === 0) return res.status(404).json({ error: "Worker not found" });
+
+    return res.json({ ok: true, worker: upd.rows[0] });
+  } catch (e) {
+    console.error("PATCH /workers/:workerId/role error:", e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PATCH /workers/:workerId/profile
+// Body: { teamId: "...", role: "..." }
+// -> update team + role (et rien d'autre)
+router.patch("/:workerId/profile", async (req, res) => {
+  const workerId = String(req.params.workerId);
+  const teamId = req.body?.teamId ? String(req.body.teamId) : null;
+  const role = req.body?.role !== undefined ? String(req.body.role) : null;
+
+  if (!teamId) return res.status(400).json({ error: "Missing teamId" });
+
+  try {
+    // team existe
+    const t = await pool.query(`select 1 from teams where id = $1`, [teamId]);
+    if (t.rowCount === 0) return res.status(404).json({ error: "Team not found" });
+
+    const upd = await pool.query(
+      `
+      update workers
+      set team_id = $1,
+          role = $2
+      where id = $3
+      returning
+        id, name, employee_number as "employeeNumber",
+        role, attendance, status, controlled,
+        team_id as "teamId", last_check_at as "lastCheckAt"
+      `,
+      [teamId, role === "" ? null : role, workerId]
+    );
+
+    if (upd.rowCount === 0) return res.status(404).json({ error: "Worker not found" });
+
+    return res.json({ ok: true, worker: upd.rows[0] });
+  } catch (e) {
+    console.error("PATCH /workers/:workerId/profile error:", e);
     return res.status(500).json({ error: "Server error" });
   }
 });

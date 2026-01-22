@@ -4,82 +4,114 @@ import 'package:go_router/go_router.dart';
 import '../app_state.dart';
 import '../auth/app_role.dart';
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
-}
-
-class _LoginPageState extends State<LoginPage> {
-  final _nameCtrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    Widget roleButton({
+      required IconData icon,
+      required String label,
+      required AppRole role,
+    }) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          icon: Icon(icon),
+          label: Text(label),
+          onPressed: () async {
+            // ✅ AuthState exposes devLogin(role: ...) in this project.
+            await authState.devLogin(role: role);
+            if (context.mounted) context.go('/');
+          },
+        ),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Connexion')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text('Connexion'),
+      ),
       body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Mode DEV',
-                  textAlign: TextAlign.center,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Choisis un rôle (dev)',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 6),
+
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final isWide = c.maxWidth >= 520;
+
+                        if (isWide) {
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: roleButton(
+                                  icon: Icons.badge_outlined,
+                                  label: 'Chef',
+                                  role: AppRole.chef,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: roleButton(
+                                  icon: Icons.admin_panel_settings_outlined,
+                                  label: 'Admin',
+                                  role: AppRole.admin,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: roleButton(
+                                  icon: Icons.apartment_outlined,
+                                  label: 'Direction',
+                                  role: AppRole.direction,
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+
+                        return Column(
+                          children: [
+                            roleButton(
+                              icon: Icons.badge_outlined,
+                              label: 'Chef',
+                              role: AppRole.chef,
+                            ),
+                            const SizedBox(height: 12),
+                            roleButton(
+                              icon: Icons.admin_panel_settings_outlined,
+                              label: 'Admin',
+                              role: AppRole.admin,
+                            ),
+                            const SizedBox(height: 12),
+                            roleButton(
+                              icon: Icons.apartment_outlined,
+                              label: 'Direction',
+                              role: AppRole.direction,
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Nom affiché (optionnel)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () async {
-                    await authState.devLogin(
-                      role: AppRole.chef,
-                      displayName: _nameCtrl.text,
-                    );
-                    if (context.mounted) context.go('/');
-                  },
-                  child: const Text('DEV: Chef d\'équipe'),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: () async {
-                    await authState.devLogin(
-                      role: AppRole.admin,
-                      displayName: _nameCtrl.text,
-                    );
-                    if (context.mounted) context.go('/');
-                  },
-                  child: const Text('DEV: Admin'),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: () async {
-                    await authState.devLogin(
-                      role: AppRole.direction,
-                      displayName: _nameCtrl.text,
-                    );
-                    if (context.mounted) context.go('/');
-                  },
-                  child: const Text('DEV: Direction'),
-                ),
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
         ),
