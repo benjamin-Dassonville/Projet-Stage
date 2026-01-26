@@ -14,17 +14,14 @@ class LoginPage extends StatelessWidget {
       required String label,
       required AppRole role,
     }) {
-      return SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          icon: Icon(icon),
-          label: Text(label),
-          onPressed: () async {
-            // ✅ AuthState exposes devLogin(role: ...) in this project.
-            await authState.devLogin(role: role);
-            if (context.mounted) context.go('/');
-          },
-        ),
+      return FilledButton.icon(
+        onPressed: () async {
+          // AuthState exposes devLogin(role: ...) in this project.
+          await authState.devLogin(role: role);
+          if (context.mounted) context.go('/');
+        },
+        icon: Icon(icon),
+        label: Text(label),
       );
     }
 
@@ -33,83 +30,121 @@ class LoginPage extends StatelessWidget {
         automaticallyImplyLeading: false,
         title: const Text('Connexion'),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+      body: SafeArea(
+        child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Choisis un rôle (dev)',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 18,
+                            child: Icon(
+                              Icons.shield_outlined,
+                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            ),
                           ),
-                    ),
-                    const SizedBox(height: 6),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'EPI Control',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  "Choisis un rôle pour la démo",
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
 
-                    LayoutBuilder(
-                      builder: (context, c) {
-                        final isWide = c.maxWidth >= 520;
+                      // Responsive :
+                      // - PC / large : 3 boutons alignés et bien espacés
+                      // - Mobile : un sous l'autre
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isWide = constraints.maxWidth >= 520;
 
-                        if (isWide) {
-                          return Row(
+                          if (isWide) {
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: roleButton(
+                                    icon: Icons.badge_outlined,
+                                    label: 'Chef',
+                                    role: AppRole.chef,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: roleButton(
+                                    icon: Icons.admin_panel_settings_outlined,
+                                    label: 'Admin',
+                                    role: AppRole.admin,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: roleButton(
+                                    icon: Icons.apartment_outlined,
+                                    label: 'Direction',
+                                    role: AppRole.direction,
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Expanded(
-                                child: roleButton(
-                                  icon: Icons.badge_outlined,
-                                  label: 'Chef',
-                                  role: AppRole.chef,
-                                ),
+                              roleButton(
+                                icon: Icons.badge_outlined,
+                                label: 'Chef',
+                                role: AppRole.chef,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: roleButton(
-                                  icon: Icons.admin_panel_settings_outlined,
-                                  label: 'Admin',
-                                  role: AppRole.admin,
-                                ),
+                              const SizedBox(height: 12),
+                              roleButton(
+                                icon: Icons.admin_panel_settings_outlined,
+                                label: 'Admin',
+                                role: AppRole.admin,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: roleButton(
-                                  icon: Icons.apartment_outlined,
-                                  label: 'Direction',
-                                  role: AppRole.direction,
-                                ),
+                              const SizedBox(height: 12),
+                              roleButton(
+                                icon: Icons.apartment_outlined,
+                                label: 'Direction',
+                                role: AppRole.direction,
                               ),
                             ],
                           );
-                        }
+                        },
+                      ),
 
-                        return Column(
-                          children: [
-                            roleButton(
-                              icon: Icons.badge_outlined,
-                              label: 'Chef',
-                              role: AppRole.chef,
-                            ),
-                            const SizedBox(height: 12),
-                            roleButton(
-                              icon: Icons.admin_panel_settings_outlined,
-                              label: 'Admin',
-                              role: AppRole.admin,
-                            ),
-                            const SizedBox(height: 12),
-                            roleButton(
-                              icon: Icons.apartment_outlined,
-                              label: 'Direction',
-                              role: AppRole.direction,
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
+                      const SizedBox(height: 14),
+                      Text(
+                        "Astuce : tu peux changer de rôle à tout moment via la déconnexion.",
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

@@ -9,6 +9,8 @@ import healthRoutes from "./routes/health.js";
 import checksRoutes from "./routes/checks.js";
 import workersRoutes from "./routes/workers.js";
 import teamsRoutes from "./routes/teams.js";
+import rolesRoutes from "./routes/roles.js";
+import equipmentRoutes from "./routes/equipment.js";
 import { requireAuth } from "./middleware/auth.js";
 
 const app = express();
@@ -27,6 +29,10 @@ app.use("/checks", requireAuth, checksRoutes);
 app.use("/dashboard", requireAuth, dashboardRoutes);
 app.use("/attendance", requireAuth, attendanceRoutes);
 app.use("/teams-meta", requireAuth, teamsMetaRouter);
+
+// Roles & Equipment management (Chef + Direction)
+app.use("/roles", requireAuth, rolesRoutes);
+app.use("/equipment", requireAuth, equipmentRoutes);
 
 app.use("/chefs", chefsRouter);
 app.use("/health", healthRoutes);

@@ -10,11 +10,11 @@ import 'pages/worker_check_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/forbidden_page.dart';
 
-// ✅ Liste des équipes (page “Contrôle équipes”)
-import 'pages/team_control_page.dart';
+import 'pages/team_control_page.dart';     // liste des équipes
+import 'pages/control_team_page.dart';     // détail équipe (gestion workers)
 
-// ✅ Gestion d’UNE équipe (gestion workers)
-import 'pages/control_team_page.dart';
+// ✅ nouvelle page rôles/équipements
+import 'pages/roles_manager_page.dart';
 
 bool _isAllowed(AppRole? role, Set<AppRole> allowed) {
   if (role == null) return false;
@@ -65,15 +65,10 @@ GoRouter createRouter(AuthState auth) {
         builder: (_, __) => const HomePage(),
       ),
 
-      // ✅ Teams (page “équipe” classique) : UNIQUEMENT CHEF
-      // (admin n'a plus accès au contrôle équipement/abs via cette page)
+      // ✅ Teams (contrôle EPI/abs) : UNIQUEMENT CHEF
       GoRoute(
         path: '/teams/:teamId',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.chef},
-        ),
+        redirect: (context, state) => _guard(auth, state, {AppRole.chef}),
         builder: (_, state) {
           final teamId = state.pathParameters['teamId']!;
           return TeamPage(teamId: teamId);
@@ -97,15 +92,22 @@ GoRouter createRouter(AuthState auth) {
       // ✅ Dashboard : UNIQUEMENT ADMIN
       GoRoute(
         path: '/dashboard',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.admin},
-        ),
+        redirect: (context, state) => _guard(auth, state, {AppRole.admin}),
         builder: (_, __) => const DashboardPage(),
       ),
 
-      // ✅ Control teams (LISTE des équipes) : chef + admin + direction
+      // ✅ Rôles & équipements : ADMIN + CHEF + DIRECTION
+      GoRoute(
+        path: '/roles',
+        redirect: (context, state) => _guard(
+          auth,
+          state,
+          {AppRole.admin, AppRole.chef, AppRole.direction},
+        ),
+        builder: (_, __) => const RolesManagerPage(),
+      ),
+
+      // ✅ Contrôle équipes (LISTE) : CHEF + ADMIN + DIRECTION
       GoRoute(
         path: '/control-teams',
         redirect: (context, state) => _guard(
@@ -116,7 +118,7 @@ GoRouter createRouter(AuthState auth) {
         builder: (_, __) => const TeamControlPage(),
       ),
 
-      // ✅ Control team (DÉTAIL / gestion d'une équipe) : chef + admin + direction
+      // ✅ Contrôle équipe (DÉTAIL) : CHEF + ADMIN + DIRECTION
       GoRoute(
         path: '/control-teams/:teamId',
         redirect: (context, state) => _guard(
@@ -133,6 +135,5 @@ GoRouter createRouter(AuthState auth) {
   );
 }
 
-/// IMPORTANT:
-/// ton main.dart appelle `buildRouter(auth)`.
+/// IMPORTANT: ton main.dart appelle `buildRouter(auth)`.
 GoRouter buildRouter(AuthState auth) => createRouter(auth);

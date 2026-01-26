@@ -155,6 +155,7 @@ class HomePage extends StatelessWidget {
     final canOpenTeam = role == AppRole.chef; // équipe (contrôle EPI) : chef uniquement
     final canControlTeams = role != null; // contrôle équipes : chef + admin + direction
     final canDashboard = role == AppRole.admin; // dashboard : admin uniquement
+    final canManageRoles = role == AppRole.chef || role == AppRole.direction;
 
     return Scaffold(
       appBar: AppBar(
@@ -205,6 +206,12 @@ class HomePage extends StatelessWidget {
                                 onPressed: () => _openTeamPicker(context),
                                 icon: const Icon(Icons.groups_outlined),
                                 label: const Text('Ouvrir équipe'),
+                              ),
+                            if (canManageRoles)
+                              FilledButton.tonalIcon(
+                                onPressed: () => context.push('/roles'),
+                                icon: const Icon(Icons.rule_folder_outlined),
+                                label: const Text('Rôles & équipements'),
                               ),
                             if (canControlTeams)
                               OutlinedButton.icon(
