@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart' show debugPrint;
-import 'dart:io' show Platform;
 
 import '../app_state.dart';
 import '../auth/app_role.dart';
@@ -23,23 +23,27 @@ class ApiClient {
       ),
     );
 
-    // Debug (utile pour vérifier sur quelle URL il tape)
     debugPrint('[ApiClient] baseUrl=$baseUrl');
 
     dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (options, handler) {
-          final AppRole? role = authState.role;
+  InterceptorsWrapper(
+    onRequest: (options, handler) {
+      final AppRole? role = authState.role;
 
-          if (role != null) {
-            final roleStr = switch (role) {
-              AppRole.chef => 'chef',
-              AppRole.admin => 'admin',
-              AppRole.direction => 'direction',
-            };
+      if (role != null) {
+        final roleStr = switch (role) {
+          AppRole.chef => 'chef',
+          AppRole.admin => 'admin',
+          AppRole.direction => 'direction',
+        };
+        options.headers['Authorization'] = 'Dev $roleStr';
+      }
 
-            options.headers['Authorization'] = 'Dev $roleStr';
-          }
+      // ✅ DEBUG ultra clair
+      debugPrint('➡️ ${options.method} ${options.uri}');
+      debugPrint('➡️ Authorization: ${options.headers['Authorization']}');
+      debugPrint('➡️ Headers: ${options.headers}');
+      debugPrint('➡️ Data: ${options.data}');
 
           return handler.next(options);
         },
@@ -47,33 +51,29 @@ class ApiClient {
     );
   }
 
-  /// Multi-plateforme:
-  /// - Web: localhost
-  /// - Android emulator: 10.0.2.2 (alias vers la machine hôte)
-  /// - iOS simulator: localhost
-  /// - Desktop: localhost
-  ///
-  /// ⚠️ Sur Android device réel: il faudra l’IP de ton PC (ex: 192.168.1.20)
+  /// Multi-plateforme propre :
+  /// - WEB (Chrome/Safari/PWA) : on prend le hostname courant
+  ///   Ex: tu ouvres http://192.168.1.148:57317 => API devient http://192.168.1.148:3000
+  /// - Android emulator : 10.0.2.2
+  /// - iOS simulator + desktop : localhost
+  /// - Téléphone en app native iOS/Android (pas web) : il faut une IP (sinon localhost = téléphone)
   String _computeBaseUrl() {
     const port = 3000;
 
-    // Web
     if (kIsWeb) {
-      return 'http://localhost:$port';
+      // Sur le web, Uri.base contient l'URL réelle (host = domaine / IP)
+      final host = (Uri.base.host.isEmpty) ? 'localhost' : Uri.base.host;
+      // Si tu utilises https en prod, ton API devra aussi être en https (sinon mixed content).
+      return 'http://$host:$port';
     }
 
     // Mobile / Desktop (non-web)
-    try {
-      if (Platform.isAndroid) {
-        // Android Emulator -> host machine
-        return 'http://10.0.2.2:$port';
-      }
-
-      // iOS simulator + macOS + Windows + Linux -> localhost ok
-      return 'http://localhost:$port';
-    } catch (_) {
-      // Si Platform n'est pas dispo dans un contexte bizarre, fallback safe
-      return 'http://localhost:$port';
+    // ✅ Pas de dart:io (ça casse la compilation web), on se base sur TargetPlatform.
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:$port'; // Android emulator -> host machine
     }
+
+    // iOS simulator + macOS + Windows + Linux -> localhost OK
+    return 'http://localhost:$port';
   }
 }

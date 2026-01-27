@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../api/api_client.dart';
 
 class WorkerCheckPage extends StatefulWidget {
@@ -15,6 +16,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
   String? error;
 
   String role = '';
+  String teamId = ''; // ✅ IMPORTANT
   List equipment = [];
   final Map<String, String> statusByEquipId = {};
 
@@ -50,8 +52,6 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
 
   String prettyDate(String? iso) {
     if (iso == null) return '-';
-    // simple, robuste, sans dépendance intl :
-    // "2026-01-20T10:19:17.263Z" -> "2026-01-20 10:19"
     if (iso.length >= 16) {
       final d = iso.substring(0, 10);
       final t = iso.substring(11, 16);
@@ -64,7 +64,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
   void initState() {
     super.initState();
     loadRequiredEquipment();
-    loadHistory(); // en parallèle
+    loadHistory();
   }
 
   Future<void> loadRequiredEquipment() async {
@@ -78,15 +78,23 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
       final res =
           await api.dio.get('/workers/${widget.workerId}/required-equipment');
 
-      final newRole = res.data['role'] as String;
-      final newEquipment = (res.data['equipment'] as List);
+      // ✅ maintenant l’API renvoie teamId
+      final newTeamId = (res.data['teamId'] ?? '').toString();
+
+      // role peut être null
+      final newRole = (res.data['role'] ?? '').toString();
+      final newEquipment = (res.data['equipment'] as List?) ?? [];
 
       statusByEquipId.clear();
       for (final e in newEquipment) {
-        statusByEquipId[e['id']] = 'OK';
+        final id = (e['id'] ?? '').toString();
+        if (id.isNotEmpty) {
+          statusByEquipId[id] = 'OK';
+        }
       }
 
       setState(() {
+        teamId = newTeamId;
         role = newRole;
         equipment = newEquipment;
         loading = false;
@@ -135,16 +143,21 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
     try {
       final api = ApiClient();
 
+      if (teamId.isEmpty) {
+        throw Exception('teamId manquant: vérifie /required-equipment');
+      }
+
       final items = equipment.map((e) {
-        final id = e['id'] as String;
+        final id = (e['id'] ?? '').toString();
         return {'equipmentId': id, 'status': statusByEquipId[id] ?? 'OK'};
       }).toList();
 
       final payload = {
         'workerId': widget.workerId,
-        'teamId': '1', // MVP : en dur pour l’instant
+        'teamId': teamId, // ✅ PLUS EN DUR
         'items': items,
       };
+
 
       await api.dio.post('/checks', data: payload);
 
@@ -153,11 +166,23 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
         const SnackBar(content: Text('Contrôle envoyé ✅')),
       );
 
-      // refresh historique après envoi
       await loadHistory();
 
       if (!mounted) return;
       Navigator.of(context).pop(true);
+    } on DioException catch (e) {
+      debugPrint('POST /checks FAILED');
+      debugPrint('status=${e.response?.statusCode}');
+      debugPrint('data=${e.response?.data}');
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erreur envoi: ${e.response?.statusCode ?? ''} ${e.response?.data ?? e.message}',
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -245,14 +270,14 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
           const SizedBox(height: 8),
 
           ...equipment.map((e) {
-            final id = e['id'] as String;
+            final id = (e['id'] ?? '').toString();
             final current = statusByEquipId[id] ?? 'OK';
 
             return Card(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: ListTile(
-                  title: Text(e['name']),
+                  title: Text((e['name'] ?? '').toString()),
                   subtitle: Text('Statut: ${labelForStatus(current)}'),
                   trailing: SizedBox(
                     width: isNarrow ? 220 : 280,
@@ -263,10 +288,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
                       ),
                       segments: <ButtonSegment<String>>[
                         const ButtonSegment(value: 'OK', label: Text('OK')),
-                        ButtonSegment(
-                          value: 'MANQUANT',
-                          label: Text(missingLabel),
-                        ),
+                        ButtonSegment(value: 'MANQUANT', label: Text(missingLabel)),
                         const ButtonSegment(value: 'KO', label: Text('KO')),
                       ],
                       selected: <String>{current},
@@ -291,7 +313,6 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
           const Divider(),
           const SizedBox(height: 8),
 
-          // --- Historique ---
           Row(
             children: [
               const Expanded(
@@ -307,8 +328,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
                   decoration: const InputDecoration(
                     isDense: true,
                     border: OutlineInputBorder(),
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   ),
                   items: const [
                     DropdownMenuItem(value: 'today', child: Text("Aujourd'hui")),
@@ -335,7 +355,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
             const Text('Aucun contrôle sur la période.')
           else
             ...historyChecks.map((c) {
-              final result = (c['result'] ?? '') as String;
+              final result = (c['result'] ?? '').toString();
               final createdAt = c['createdAt'] as String?;
               final items = (c['items'] as List?) ?? [];
 
@@ -350,15 +370,13 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
                           Expanded(
                             child: Text(
                               prettyDate(createdAt),
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                           ),
                           resultChip(result),
                         ],
                       ),
                       const SizedBox(height: 10),
-
                       if (items.isEmpty)
                         const Text(
                           'Aucun item (ou items non enregistrés).',
@@ -378,8 +396,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
                                 Expanded(child: Text(name)),
                                 Text(
                                   labelForStatus(st),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600),
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
                                 ),
                               ],
                             ),

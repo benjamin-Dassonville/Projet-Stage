@@ -30,7 +30,7 @@ app.use("/dashboard", requireAuth, dashboardRoutes);
 app.use("/attendance", requireAuth, attendanceRoutes);
 app.use("/teams-meta", requireAuth, teamsMetaRouter);
 
-// Roles & Equipment management (Chef + Direction)
+// Roles & Equipment management
 app.use("/roles", requireAuth, rolesRoutes);
 app.use("/equipment", requireAuth, equipmentRoutes);
 
@@ -50,4 +50,5 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Server error" });
 });
 
-app.listen(port, () => console.log(`API running on :${port}`));
+// ✅ Écoute sur le réseau (important pour téléphone)
+app.listen(port, "0.0.0.0", () => console.log(`API running on :${port}`));

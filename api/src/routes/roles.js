@@ -1,15 +1,29 @@
 import express from "express";
 import crypto from "crypto";
-
 import { pool } from "../db.js";
 
 const router = express.Router();
 
-// Only CHEF + DIRECTION can manage roles/equipment
+// ✅ CHEF + DIRECTION + ADMIN peuvent gérer rôles/équipements
 function requireRoleManager(req, res, next) {
   const role = req.user?.role;
-  if (role === "chef" || role === "direction") return next();
+  if (role === "chef" || role === "direction" || role === "admin") return next();
   return res.status(403).json({ error: "Forbidden" });
+}
+
+// ✅ Slug PRO pour ID = label
+// - minuscules
+// - accents supprimés
+// - espaces/punct -> "-"
+// - trim "-"
+function slugify(label) {
+  return String(label || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 // GET /roles?withCounts=1
@@ -42,16 +56,30 @@ router.get("/", requireRoleManager, async (req, res, next) => {
   }
 });
 
-// POST /roles  { id?: string, label: string }
+// POST /roles  { label: string }
+// ✅ id auto = slug(label). Si collision => 409
 router.post("/", requireRoleManager, async (req, res, next) => {
   try {
-    const { id, label } = req.body || {};
-    if (!label || String(label).trim().length === 0) {
+    const { label } = req.body || {};
+    const cleanLabel = String(label || "").trim();
+
+    if (!cleanLabel) {
       return res.status(400).json({ error: "Missing label" });
     }
 
-    const roleId = (id && String(id).trim()) || `role_${crypto.randomUUID()}`;
-    const cleanLabel = String(label).trim();
+    const roleId = slugify(cleanLabel);
+    if (!roleId) {
+      return res.status(400).json({ error: "Invalid label" });
+    }
+
+    // Si le slug existe déjà => 409
+    const exists = await pool.query(`select 1 from roles where id = $1`, [roleId]);
+    if (exists.rowCount > 0) {
+      return res.status(409).json({
+        error: "Role already exists",
+        id: roleId,
+      });
+    }
 
     const { rows } = await pool.query(
       `insert into roles (id, label) values ($1, $2) returning id, label`,
@@ -59,7 +87,7 @@ router.post("/", requireRoleManager, async (req, res, next) => {
     );
     res.status(201).json(rows[0]);
   } catch (e) {
-    // duplicate key
+    // duplicate key (au cas où)
     if (e?.code === "23505") {
       return res.status(409).json({ error: "Role id already exists" });
     }
@@ -68,17 +96,20 @@ router.post("/", requireRoleManager, async (req, res, next) => {
 });
 
 // PATCH /roles/:roleId  { label: string }
+// ✅ label modifiable mais ID immuable
 router.patch("/:roleId", requireRoleManager, async (req, res, next) => {
   try {
     const roleId = req.params.roleId;
     const { label } = req.body || {};
-    if (!label || String(label).trim().length === 0) {
+
+    const cleanLabel = String(label || "").trim();
+    if (!cleanLabel) {
       return res.status(400).json({ error: "Missing label" });
     }
 
     const { rows } = await pool.query(
       `update roles set label = $2 where id = $1 returning id, label`,
-      [roleId, String(label).trim()]
+      [roleId, cleanLabel]
     );
     if (rows.length === 0) {
       return res.status(404).json({ error: "Not found" });
@@ -108,7 +139,6 @@ router.get("/:roleId/equipment", requireRoleManager, async (req, res, next) => {
   try {
     const roleId = req.params.roleId;
 
-    // ensure role exists
     const r = await pool.query(`select id from roles where id = $1`, [roleId]);
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
 
@@ -130,8 +160,6 @@ router.get("/:roleId/equipment", requireRoleManager, async (req, res, next) => {
 
 // POST /roles/:roleId/equipment
 // body: { equipmentId?: string, name?: string }
-// - if equipmentId present -> assign existing equipment
-// - else if name present -> create equipment + assign
 router.post(
   "/:roleId/equipment",
   requireRoleManager,
@@ -152,16 +180,20 @@ router.post(
       let eqId = equipmentId && String(equipmentId).trim();
 
       if (!eqId) {
-        if (!name || String(name).trim().length === 0) {
+        const cleanName = String(name || "").trim();
+        if (!cleanName) {
           await client.query("rollback");
-          return res
-            .status(400)
-            .json({ error: "Missing equipmentId or name" });
+          return res.status(400).json({ error: "Missing equipmentId or name" });
         }
+
+        // (Optionnel) Si tu veux aussi un ID "pro" pour equipment :
+        // eqId = slugify(cleanName);  // ⚠️ à activer seulement si tu veux la même règle
+        // mais ici je laisse ton UUID pour éviter collisions silencieuses :
         eqId = `eq_${crypto.randomUUID()}`;
+
         await client.query(`insert into equipment (id, name) values ($1, $2)`, [
           eqId,
-          String(name).trim(),
+          cleanName,
         ]);
       } else {
         const e = await client.query(`select id from equipment where id = $1`, [
@@ -184,7 +216,6 @@ router.post(
 
       await client.query("commit");
 
-      // return equipment
       const out = await pool.query(`select id, name from equipment where id = $1`, [
         eqId,
       ]);

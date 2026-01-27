@@ -79,14 +79,16 @@ router.get("/:workerId", async (req, res) => {
  * GET /workers/:workerId/required-equipment
  * Matériel requis (FULL DB)
  * via workers.role -> role_equipment -> equipment
+ *
+ * ✅ renvoie aussi teamId (important pour POST /checks)
  */
 router.get("/:workerId/required-equipment", async (req, res) => {
   const workerId = String(req.params.workerId);
 
   try {
-    // 1) récupérer le rôle du worker
+    // 1) récupérer teamId + rôle du worker
     const w = await pool.query(
-      `select id, role from workers where id = $1 limit 1`,
+      `select id, role, team_id as "teamId" from workers where id = $1 limit 1`,
       [workerId]
     );
 
@@ -94,10 +96,11 @@ router.get("/:workerId/required-equipment", async (req, res) => {
       return res.status(404).json({ error: "Worker not found" });
     }
 
-    const roleId = w.rows[0].role;
+    const roleId = w.rows[0].role;         // peut être null
+    const teamId = w.rows[0].teamId;       // ✅ important
 
     if (!roleId) {
-      return res.json({ workerId, role: null, equipment: [] });
+      return res.json({ workerId, teamId, role: null, equipment: [] });
     }
 
     // 2) équipements requis pour ce rôle
@@ -116,14 +119,12 @@ router.get("/:workerId/required-equipment", async (req, res) => {
 
     return res.json({
       workerId,
+      teamId,
       role: roleId,
       equipment: eq.rows,
     });
   } catch (e) {
-    console.error(
-      "GET /workers/:workerId/required-equipment error:",
-      e
-    );
+    console.error("GET /workers/:workerId/required-equipment error:", e);
     return res.status(500).json({ error: "Server error" });
   }
 });
@@ -166,11 +167,7 @@ router.get("/:workerId/checks", async (req, res) => {
 
   try {
     // 1) vérifier que le worker existe
-    const exists = await pool.query(
-      `select 1 from workers where id = $1`,
-      [workerId]
-    );
-
+    const exists = await pool.query(`select 1 from workers where id = $1`, [workerId]);
     if (exists.rowCount === 0) {
       return res.status(404).json({ error: "Worker not found" });
     }

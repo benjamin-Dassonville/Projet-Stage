@@ -1,4 +1,5 @@
 export function requireAuth(req, res, next) {
+  console.log("AUTH HEADER =", req.headers.authorization);
   if (process.env.DEV_AUTH === "1") {
     const auth = req.headers.authorization || "";
     if (auth.startsWith("Dev ")) {

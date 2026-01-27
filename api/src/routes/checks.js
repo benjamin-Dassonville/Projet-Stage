@@ -13,6 +13,10 @@ function computeResult(items) {
 // POST /checks
 // body: { workerId: "1-2", teamId:"1", items:[{equipmentId:"botte", status:"OK"}] }
 router.post("/", async (req, res) => {
+  // ✅ DEBUG ICI (req existe ici)
+  console.log("POST /checks AUTH =", req.headers.authorization);
+  console.log("POST /checks body =", req.body);
+
   try {
     const { workerId, teamId, items } = req.body ?? {};
 
@@ -70,8 +74,7 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Unknown equipmentId(s)", missing });
     }
 
-    // 4) (Optionnel mais recommandé) vérifier que ces équipements font partie du rôle du worker
-    // Si tu veux désactiver cette règle, commente ce bloc.
+    // 4) vérifier que ces équipements font partie du rôle du worker
     if (w.role) {
       const roleEqRes = await pool.query(
         `
@@ -99,7 +102,6 @@ router.post("/", async (req, res) => {
     // 6) transaction DB atomique
     await pool.query("begin");
 
-    // insert checks
     const checkRes = await pool.query(
       `
       insert into checks(worker_id, team_id, role, result, created_at)
@@ -111,7 +113,6 @@ router.post("/", async (req, res) => {
 
     const checkId = checkRes.rows[0].id;
 
-    // insert items
     for (const it of items) {
       await pool.query(
         `
@@ -122,7 +123,6 @@ router.post("/", async (req, res) => {
       );
     }
 
-    // update worker status/controlled/last_check_at
     const newStatus = result === "CONFORME" ? "OK" : "KO";
     await pool.query(
       `

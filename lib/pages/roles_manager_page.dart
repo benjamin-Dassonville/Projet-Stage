@@ -426,7 +426,6 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                               return ListTile(
                                 enabled: !already,
                                 title: Text(name.isEmpty ? id : name),
-                                subtitle: Text('id: $id'),
                                 trailing: already
                                     ? const Icon(Icons.check_circle, size: 18)
                                     : const Icon(Icons.add, size: 18),
@@ -595,7 +594,6 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                       selected: selected,
                       leading: const Icon(Icons.badge_outlined),
                       title: Text(label.isEmpty ? id : label),
-                      subtitle: count == null ? Text('id: $id') : Text('équipements: $count'),
                       trailing: PopupMenuButton<String>(
                         onSelected: (v) {
                           if (v == 'rename') _renameRole(r);
@@ -683,7 +681,6 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                         return ListTile(
                           leading: const Icon(Icons.construction_outlined),
                           title: Text(name.isEmpty ? id : name),
-                          subtitle: Text('id: $id'),
                           trailing: PopupMenuButton<String>(
                             onSelected: (v) {
                               if (v == 'remove') _removeEquipment(id);

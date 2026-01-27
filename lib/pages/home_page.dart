@@ -127,7 +127,6 @@ class HomePage extends StatelessWidget {
 
                               return ListTile(
                                 title: Text(title),
-                                subtitle: Text("id: $id"),
                                 onTap: () => Navigator.pop(sheetContext, id),
                               );
                             },
@@ -151,11 +150,38 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final role = authState.role;
 
-    // Boutons visibles selon rôle (côté HOME seulement, le router reste la sécurité réelle)
-    final canOpenTeam = role == AppRole.chef; // équipe (contrôle EPI) : chef uniquement
-    final canControlTeams = role != null; // contrôle équipes : chef + admin + direction
-    final canDashboard = role == AppRole.admin; // dashboard : admin uniquement
-    final canManageRoles = role == AppRole.chef || role == AppRole.direction;
+    // Visibilité boutons (UI seulement — sécurité réelle = router)
+    final canOpenTeam = role == AppRole.chef; // équipe : chef uniquement
+    final canRoles = role == AppRole.chef || role == AppRole.direction || role == AppRole.admin;
+    final canControlTeams = role == AppRole.chef || role == AppRole.admin || role == AppRole.direction;
+    final canDashboard = role == AppRole.admin;
+
+    final actions = <Widget>[
+      if (canOpenTeam)
+        FilledButton.icon(
+          onPressed: () => _openTeamPicker(context),
+          icon: const Icon(Icons.groups_outlined),
+          label: const Text('Ouvrir équipe'),
+        ),
+      if (canRoles)
+        FilledButton.tonalIcon(
+          onPressed: () => context.push('/roles'),
+          icon: const Icon(Icons.inventory_2_outlined),
+          label: const Text('Rôles & équipements'),
+        ),
+      if (canControlTeams)
+        OutlinedButton.icon(
+          onPressed: () => context.push('/control-teams'),
+          icon: const Icon(Icons.manage_accounts_outlined),
+          label: const Text('Contrôle équipes'),
+        ),
+      if (canDashboard)
+        FilledButton.tonalIcon(
+          onPressed: () => context.push('/dashboard'),
+          icon: const Icon(Icons.analytics_outlined),
+          label: const Text('Dashboard'),
+        ),
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -175,7 +201,7 @@ class HomePage extends StatelessWidget {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
+            constraints: const BoxConstraints(maxWidth: 820),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Card(
@@ -198,65 +224,42 @@ class HomePage extends StatelessWidget {
 
                       LayoutBuilder(
                         builder: (context, constraints) {
-                          final isWide = constraints.maxWidth >= 600;
+                          final isPhone = constraints.maxWidth < 520;
 
-                          final buttons = <Widget>[
-                            if (canOpenTeam)
-                              FilledButton.icon(
-                                onPressed: () => _openTeamPicker(context),
-                                icon: const Icon(Icons.groups_outlined),
-                                label: const Text('Ouvrir équipe'),
-                              ),
-                            if (canManageRoles)
-                              FilledButton.tonalIcon(
-                                onPressed: () => context.push('/roles'),
-                                icon: const Icon(Icons.rule_folder_outlined),
-                                label: const Text('Rôles & équipements'),
-                              ),
-                            if (canControlTeams)
-                              OutlinedButton.icon(
-                                onPressed: () => context.push('/control-teams'),
-                                icon: const Icon(Icons.manage_accounts_outlined),
-                                label: const Text('Contrôle équipe'),
-                              ),
-                            if (canDashboard)
-                              FilledButton.tonalIcon(
-                                onPressed: () => context.push('/dashboard'),
-                                icon: const Icon(Icons.analytics_outlined),
-                                label: const Text('Dashboard'),
-                              ),
-                          ];
-
-                          if (buttons.isEmpty) {
+                          if (actions.isEmpty) {
                             return Text(
                               "Aucune action disponible pour ce rôle.",
                               style: Theme.of(context).textTheme.bodyMedium,
                             );
                           }
 
-                          if (isWide) {
-                            return Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                          // ✅ PHONE: colonne pleine largeur
+                          if (isPhone) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                for (int i = 0; i < buttons.length; i++) ...[
-                                  SizedBox(
-                                    width: 220,
-                                    child: buttons[i],
-                                  ),
-                                  if (i != buttons.length - 1) const SizedBox(width: 12),
+                                for (int i = 0; i < actions.length; i++) ...[
+                                  actions[i],
+                                  if (i != actions.length - 1) const SizedBox(height: 12),
                                 ],
                               ],
                             );
                           }
 
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (int i = 0; i < buttons.length; i++) ...[
-                                buttons[i],
-                                if (i != buttons.length - 1) const SizedBox(height: 12),
+                          // ✅ DESKTOP/TABLET: Wrap (pas d'overflow)
+                          return Center(
+                            child: Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              alignment: WrapAlignment.center,
+                              children: [
+                                for (final w in actions)
+                                  SizedBox(
+                                    width: 240, // taille stable, mais wrap si ça dépasse
+                                    child: w,
+                                  ),
                               ],
-                            ],
+                            ),
                           );
                         },
                       ),

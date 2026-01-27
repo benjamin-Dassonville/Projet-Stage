@@ -17,6 +17,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
 
   List<Map<String, dynamic>> workers = [];
   List<Map<String, dynamic>> teams = [];
+  List<Map<String, dynamic>> roles = [];
 
   final TextEditingController searchCtrl = TextEditingController();
 
@@ -43,6 +44,23 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
     }
   }
 
+  String _teamLabel(Map<String, dynamic> t) {
+    final name = (t['name'] ?? '').toString();
+    final count = t['workerCount'];
+    if (count == null) return name;
+    return '$name ($count)';
+  }
+
+  String _roleLabel(String? roleId) {
+    if (roleId == null || roleId.isEmpty) return '—';
+    final found = roles.cast<Map<String, dynamic>>().firstWhere(
+          (r) => (r['id'] ?? '').toString() == roleId,
+          orElse: () => const {},
+        );
+    final label = (found['label'] ?? '').toString();
+    return label.isNotEmpty ? label : roleId;
+  }
+
   Future<void> _loadAll() async {
     setState(() {
       loading = true;
@@ -52,17 +70,30 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
     try {
       final api = ApiClient();
 
+      // teams list (pour dropdown add/edit)
       final tRes = await api.dio.get('/teams-meta?withCounts=1');
       final t = (tRes.data as List).cast<Map<String, dynamic>>();
-
-      // Tri par nom, mais garde UNASSIGNED si tu veux le voir aussi
       t.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
 
+      // roles list (pour dropdown role)
+      List<Map<String, dynamic>> r = [];
+      try {
+        final rRes = await api.dio.get('/roles');
+        r = (rRes.data as List).cast<Map<String, dynamic>>();
+        r.sort((a, b) => (a['label'] ?? '').toString().compareTo((b['label'] ?? '').toString()));
+      } catch (_) {
+        // si l'endpoint /roles n'existe pas ou pas autorisé,
+        // on garde une liste vide (la page reste utilisable).
+        r = [];
+      }
+
+      // workers list (team current)
       final wRes = await api.dio.get('/teams/${widget.teamId}/workers');
       final w = (wRes.data as List).cast<Map<String, dynamic>>();
 
       setState(() {
         teams = t;
+        roles = r;
         workers = w;
         loading = false;
       });
@@ -80,27 +111,27 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
 
     return workers.where((w) {
       final name = (w['name'] ?? '').toString().toLowerCase();
-      final id = (w['id'] ?? '').toString().toLowerCase();
-      return name.contains(q) || id.contains(q);
+      final emp = (w['employeeNumber'] ?? w['employee_number'] ?? '').toString().toLowerCase();
+      return name.contains(q) || emp.contains(q);
     }).toList();
   }
 
   Future<bool> _confirmRemoveDialog(String workerName) async {
     return (await showDialog<bool>(
           context: context,
-          barrierDismissible: false,
+          barrierDismissible: true,
           builder: (_) => AlertDialog(
-            title: const Text('Confirmer la suppression'),
+            title: const Text('Confirmer le retrait'),
             content: Text(
               'Retirer "$workerName" de cette équipe ?\n\n'
-              'Il sera déplacé dans "$unassignedTeamId".',
+              'Il sera déplacé dans "Non affectés".',
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
                 child: const Text('Annuler'),
               ),
-              ElevatedButton(
+              FilledButton(
                 onPressed: () => Navigator.pop(context, true),
                 child: const Text('Confirmer'),
               ),
@@ -125,12 +156,12 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$workerName → $unassignedTeamId')),
+        SnackBar(content: Text('$workerName déplacé → Non affectés')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur suppression: $e')),
+        SnackBar(content: Text('Erreur retrait: $e')),
       );
     }
   }
@@ -138,14 +169,14 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
   Future<void> _openAddWorkerDialog() async {
     final nameCtrl = TextEditingController();
     final empCtrl = TextEditingController();
-    final roleCtrl = TextEditingController();
 
     bool dontAssign = false;
     String selectedTeamId = widget.teamId;
+    String? selectedRoleId; // null => aucun rôle
 
     final saved = await showDialog<bool>(
           context: context,
-          barrierDismissible: false,
+          barrierDismissible: true,
           builder: (_) {
             return StatefulBuilder(
               builder: (ctx, setLocal) {
@@ -158,29 +189,45 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                         TextField(
                           controller: nameCtrl,
                           decoration: const InputDecoration(
-                            labelText: 'Nom (obligatoire si création)',
+                            labelText: 'Nom (requis si création)',
                           ),
                         ),
                         const SizedBox(height: 10),
                         TextField(
                           controller: empCtrl,
                           decoration: const InputDecoration(
-                            labelText: 'employeeNumber (obligatoire)',
+                            labelText: 'Matricule (employeeNumber) *',
                           ),
                         ),
                         const SizedBox(height: 10),
-                        TextField(
-                          controller: roleCtrl,
+
+                        DropdownButtonFormField<String?>(
+                          value: selectedRoleId,
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Aucun rôle'),
+                            ),
+                            ...roles.map((r) {
+                              final id = (r['id'] ?? '').toString();
+                              final label = (r['label'] ?? id).toString();
+                              return DropdownMenuItem<String?>(
+                                value: id,
+                                child: Text(label, overflow: TextOverflow.ellipsis),
+                              );
+                            }),
+                          ],
+                          onChanged: (v) => setLocal(() => selectedRoleId = v),
                           decoration: const InputDecoration(
-                            labelText: 'Rôle (optionnel)',
-                            hintText: 'ex: debroussailleur',
+                            labelText: 'Rôle',
                           ),
                         ),
+
                         const SizedBox(height: 14),
                         CheckboxListTile(
                           value: dontAssign,
                           onChanged: (v) => setLocal(() => dontAssign = v ?? false),
-                          title: const Text('Ne pas assigner (UNASSIGNED)'),
+                          title: const Text('Ne pas assigner (Non affectés)'),
                           contentPadding: EdgeInsets.zero,
                         ),
                         const SizedBox(height: 8),
@@ -194,12 +241,9 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                                   .where((t) => (t['id'] ?? '').toString().isNotEmpty)
                                   .map((t) {
                                 final id = t['id'].toString();
-                                final nm = t['name'].toString();
-                                final count = t['workerCount'];
-                                final label = count != null ? '$nm  ($count)' : nm;
                                 return DropdownMenuItem(
                                   value: id,
-                                  child: Text(label, overflow: TextOverflow.ellipsis),
+                                  child: Text(_teamLabel(t), overflow: TextOverflow.ellipsis),
                                 );
                               }).toList(),
                               onChanged: (v) {
@@ -220,7 +264,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                       onPressed: () => Navigator.pop(ctx, false),
                       child: const Text('Annuler'),
                     ),
-                    ElevatedButton(
+                    FilledButton(
                       onPressed: () => Navigator.pop(ctx, true),
                       child: const Text('Ajouter'),
                     ),
@@ -234,34 +278,30 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
 
     final name = nameCtrl.text.trim();
     final employeeNumber = empCtrl.text.trim();
-    final role = roleCtrl.text.trim();
 
     nameCtrl.dispose();
     empCtrl.dispose();
-    roleCtrl.dispose();
 
     if (!saved) return;
 
     if (employeeNumber.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('employeeNumber est obligatoire.')),
+        const SnackBar(content: Text('Le matricule (employeeNumber) est obligatoire.')),
       );
       return;
     }
 
-    // Si le matricule n’existe pas -> ton API exige name pour créer
-    // Si le matricule existe -> move possible sans name
-    // On laisse passer : si API renvoie 400 “Missing name…” on affichera l’erreur.
     final targetTeamId = dontAssign ? unassignedTeamId : selectedTeamId;
 
     try {
       final api = ApiClient();
       final payload = <String, dynamic>{'employeeNumber': employeeNumber};
       if (name.isNotEmpty) payload['name'] = name;
-      if (role.isNotEmpty) payload['role'] = role;
+      if (selectedRoleId != null) payload['role'] = selectedRoleId;
 
       final res = await api.dio.post('/teams/$targetTeamId/workers', data: payload);
+
       await _loadAll();
       if (!mounted) return;
 
@@ -270,7 +310,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
           : 'ok';
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ajout: $mode → $targetTeamId')),
+        SnackBar(content: Text('Ajout: $mode')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -289,21 +329,20 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
       final name = (w['name'] ?? '').toString();
       final emp = (w['employeeNumber'] ?? '').toString();
       final currentTeamId = (w['teamId'] ?? '').toString();
-      final currentRole = (w['role'] ?? '').toString();
+      final currentRoleId = (w['role'] ?? '').toString();
 
       bool dontAssign = currentTeamId == unassignedTeamId;
       String selectedTeamId = dontAssign ? unassignedTeamId : currentTeamId;
-
-      final roleCtrl = TextEditingController(text: currentRole);
+      String? selectedRoleId = currentRoleId.isEmpty ? null : currentRoleId;
 
       final saved = await showDialog<bool>(
             context: context,
-            barrierDismissible: false,
+            barrierDismissible: true,
             builder: (_) {
               return StatefulBuilder(
                 builder: (ctx, setLocal) {
                   return AlertDialog(
-                    title: const Text('Profil worker'),
+                    title: const Text('Modifier worker'),
                     content: SingleChildScrollView(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -313,7 +352,6 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                           if (emp.isNotEmpty) Text('Matricule: $emp'),
                           const SizedBox(height: 14),
 
-                          // ✅ Uniquement: équipe + rôle
                           CheckboxListTile(
                             value: dontAssign,
                             onChanged: (v) {
@@ -322,7 +360,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                                 selectedTeamId = dontAssign ? unassignedTeamId : currentTeamId;
                               });
                             },
-                            title: const Text('Ne pas assigner (UNASSIGNED)'),
+                            title: const Text('Ne pas assigner (Non affectés)'),
                             contentPadding: EdgeInsets.zero,
                           ),
 
@@ -332,17 +370,15 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                             child: Opacity(
                               opacity: dontAssign ? 0.5 : 1,
                               child: DropdownButtonFormField<String>(
-                                value: selectedTeamId == unassignedTeamId
-                                    ? (dontAssign ? unassignedTeamId : currentTeamId)
-                                    : selectedTeamId,
+                                value: selectedTeamId,
                                 items: teams
                                     .where((t) => (t['id'] ?? '').toString().isNotEmpty)
                                     .map((t) {
                                   final id = t['id'].toString();
-                                  final nm = t['name'].toString();
                                   return DropdownMenuItem(
                                     value: id,
-                                    child: Text(nm, overflow: TextOverflow.ellipsis),
+                                    child: Text((t['name'] ?? '').toString(),
+                                        overflow: TextOverflow.ellipsis),
                                   );
                                 }).toList(),
                                 onChanged: (v) {
@@ -355,12 +391,24 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                           ),
 
                           const SizedBox(height: 12),
-                          TextField(
-                            controller: roleCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Rôle',
-                              hintText: 'ex: debroussailleur',
-                            ),
+                          DropdownButtonFormField<String?>(
+                            value: selectedRoleId,
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('Aucun rôle'),
+                              ),
+                              ...roles.map((r) {
+                                final id = (r['id'] ?? '').toString();
+                                final label = (r['label'] ?? id).toString();
+                                return DropdownMenuItem<String?>(
+                                  value: id,
+                                  child: Text(label, overflow: TextOverflow.ellipsis),
+                                );
+                              }),
+                            ],
+                            onChanged: (v) => setLocal(() => selectedRoleId = v),
+                            decoration: const InputDecoration(labelText: 'Rôle'),
                           ),
                         ],
                       ),
@@ -370,7 +418,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                         onPressed: () => Navigator.pop(ctx, false),
                         child: const Text('Annuler'),
                       ),
-                      ElevatedButton(
+                      FilledButton(
                         onPressed: () => Navigator.pop(ctx, true),
                         child: const Text('Enregistrer'),
                       ),
@@ -382,16 +430,17 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
           ) ??
           false;
 
-      final newTeamId = dontAssign ? unassignedTeamId : selectedTeamId;
-      final newRole = roleCtrl.text.trim();
-      roleCtrl.dispose();
-
       if (!saved) return;
 
-      // ⚠️ IMPORTANT: cet endpoint DOIT exister côté API.
+      final newTeamId = dontAssign ? unassignedTeamId : selectedTeamId;
+
       await api.dio.patch(
         '/workers/$workerId/profile',
-        data: {'teamId': newTeamId, 'role': newRole},
+        data: {
+          'teamId': newTeamId,
+          // null => supprimer le rôle
+          'role': selectedRoleId,
+        },
       );
 
       await _loadAll();
@@ -469,7 +518,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
             child: TextField(
               controller: searchCtrl,
               decoration: InputDecoration(
-                hintText: 'Rechercher (nom ou id)…',
+                hintText: 'Rechercher (nom ou matricule)…',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: searchCtrl.text.isEmpty
                     ? null
@@ -493,11 +542,21 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                       final name = (w['name'] ?? '').toString();
                       final attendance = (w['attendance'] ?? '').toString();
                       final status = (w['status'] ?? '').toString();
+                      final roleId = (w['role'] ?? '').toString();
+
+                      final parts = <String>[];
+                      if (roleId.isNotEmpty) parts.add('Rôle: ${_roleLabel(roleId)}');
+                      if (attendance.isNotEmpty) parts.add(attendance);
+                      if (status.isNotEmpty) parts.add(status);
 
                       return ListTile(
                         dense: true,
-                        title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('id: $id • $attendance • $status'),
+                        title: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: parts.isEmpty ? null : Text(parts.join(' • ')),
                         onTap: id.isEmpty ? null : () => _openEditWorkerDialog(id),
                         trailing: IconButton(
                           icon: const Icon(Icons.person_remove),
