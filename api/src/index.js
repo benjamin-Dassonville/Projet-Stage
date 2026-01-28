@@ -12,6 +12,8 @@ import teamsRoutes from "./routes/teams.js";
 import rolesRoutes from "./routes/roles.js";
 import equipmentRoutes from "./routes/equipment.js";
 import { requireAuth } from "./middleware/auth.js";
+import missesRoutes from "./routes/misses.js";
+
 
 const app = express();
 
@@ -36,6 +38,8 @@ app.use("/equipment", requireAuth, equipmentRoutes);
 
 app.use("/chefs", chefsRouter);
 app.use("/health", healthRoutes);
+
+app.use("/misses", requireAuth, missesRoutes);
 
 const port = process.env.PORT || 3000;
 

@@ -5,6 +5,12 @@ const router = express.Router();
 
 const UNASSIGNED_TEAM_ID = process.env.UNASSIGNED_TEAM_ID || "UNASSIGNED";
 
+function makeWorkerIdFromEmployeeNumber(employeeNumber) {
+  // garde lettres/chiffres/_/-
+  const safe = String(employeeNumber).trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `w_${safe}`;
+}
+
 /**
  * GET /teams/:teamId/workers
  * Liste les workers d'une équipe
@@ -108,7 +114,7 @@ router.get("/:teamId/workers/lookup", async (req, res) => {
  * POST /teams/:teamId/workers
  * Body: { employeeNumber, name?, role? }
  *
- * - si employeeNumber existe déjà => move de team
+ * - si employeeNumber existe déjà => move de team (+ optionnel: update role si fourni)
  * - sinon => crée un nouveau worker (name requis)
  */
 router.post("/:teamId/workers", async (req, res) => {
@@ -140,14 +146,15 @@ router.post("/:teamId/workers", async (req, res) => {
       [employeeNumber]
     );
 
-    // ✅ MOVE
+    // ✅ MOVE (optionnel: update role si fourni)
     if (existing.rows.length > 0) {
       const workerId = existing.rows[0].id;
 
       const upd = await pool.query(
         `
         update workers
-        set team_id = $1
+        set team_id = $1,
+            role = coalesce($3, role)
         where id = $2
         returning
           id, name,
@@ -157,7 +164,11 @@ router.post("/:teamId/workers", async (req, res) => {
           team_id as "teamId",
           last_check_at as "lastCheckAt"
         `,
-        [teamId, workerId]
+        [
+          teamId,
+          workerId,
+          role === "" ? null : role, // si null => garde l'ancien
+        ]
       );
 
       return res.json({ ok: true, mode: "moved", worker: upd.rows[0] });
@@ -170,10 +181,12 @@ router.post("/:teamId/workers", async (req, res) => {
       });
     }
 
+    const workerId = makeWorkerIdFromEmployeeNumber(employeeNumber);
+
     const ins = await pool.query(
       `
-      insert into workers (name, employee_number, role, attendance, status, controlled, team_id)
-      values ($1, $2, $3, 'PRESENT', 'OK', false, $4)
+      insert into workers (id, name, employee_number, role, attendance, status, controlled, team_id)
+      values ($1, $2, $3, $4, 'PRESENT', 'OK', false, $5)
       returning
         id, name,
         employee_number as "employeeNumber",
@@ -182,11 +195,16 @@ router.post("/:teamId/workers", async (req, res) => {
         team_id as "teamId",
         last_check_at as "lastCheckAt"
       `,
-      [name, employeeNumber, role === "" ? null : role, teamId]
+      [workerId, name, employeeNumber, role === "" ? null : role, teamId]
     );
 
     return res.json({ ok: true, mode: "created", worker: ins.rows[0] });
   } catch (e) {
+    // utile si tu te reprends un 23505
+    if (e?.code === "23505") {
+      return res.status(409).json({ error: "Employee number or worker id already exists" });
+    }
+
     console.error("POST /teams/:teamId/workers error:", e);
     return res.status(500).json({ error: "Server error" });
   }
@@ -195,7 +213,6 @@ router.post("/:teamId/workers", async (req, res) => {
 /**
  * DELETE /teams/:teamId/workers/:workerId
  * Désassigner (envoie vers UNASSIGNED)
- * (ton Flutter appelle DELETE /teams/{currentTeamId}/workers/{workerId})
  */
 router.delete("/:teamId/workers/:workerId", async (req, res) => {
   const workerId = String(req.params.workerId);

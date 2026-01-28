@@ -1,13 +1,30 @@
 import 'package:flutter/material.dart';
 
 class StatusBadge extends StatelessWidget {
-  final String status; // "OK" | "KO" | "ABS" | autre
+  final String status; // "OK" | "NON_CONFORME" | "KO" | "ABS" | autre
   const StatusBadge({super.key, required this.status});
+
+  String get label {
+    switch (status) {
+      case 'OK':
+        return 'OK';
+      case 'NON_CONFORME':
+        return 'NON';
+      case 'KO':
+        return 'KO';
+      case 'ABS':
+        return 'ABS';
+      default:
+        return status;
+    }
+  }
 
   Color get bg {
     switch (status) {
       case 'OK':
         return Colors.green.shade100;
+      case 'NON_CONFORME':
+        return Colors.orange.shade100;
       case 'KO':
         return Colors.red.shade100;
       case 'ABS':
@@ -21,6 +38,8 @@ class StatusBadge extends StatelessWidget {
     switch (status) {
       case 'OK':
         return Colors.green.shade900;
+      case 'NON_CONFORME':
+        return Colors.orange.shade900;
       case 'KO':
         return Colors.red.shade900;
       case 'ABS':
@@ -30,10 +49,12 @@ class StatusBadge extends StatelessWidget {
     }
   }
 
-  IconData? get icon {
+  IconData get icon {
     switch (status) {
       case 'OK':
         return Icons.check_circle;
+      case 'NON_CONFORME':
+        return Icons.warning_amber_rounded;
       case 'KO':
         return Icons.cancel;
       case 'ABS':
@@ -57,7 +78,7 @@ class StatusBadge extends StatelessWidget {
           Icon(icon, size: 16, color: fg),
           const SizedBox(width: 6),
           Text(
-            status,
+            label,
             style: TextStyle(
               color: fg,
               fontWeight: FontWeight.bold,

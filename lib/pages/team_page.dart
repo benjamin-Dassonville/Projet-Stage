@@ -33,6 +33,18 @@ class _TeamPageState extends State<TeamPage> {
     }
   }
 
+  // ✅ Format plus lisible pour "Dernier contrôle"
+  String prettyDateShort(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      String two(int n) => n.toString().padLeft(2, '0');
+      return '${two(dt.day)}/${two(dt.month)} ${two(dt.hour)}:${two(dt.minute)}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
   Future<void> loadWorkers() async {
     setState(() {
       loading = true;
@@ -73,6 +85,28 @@ class _TeamPageState extends State<TeamPage> {
         SnackBar(content: Text('Erreur changement présence: $e')),
       );
     }
+  }
+
+  Widget _attendanceBadge({required bool isAbsent, required String status}) {
+    if (isAbsent) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.grey.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.grey.withOpacity(0.6)),
+        ),
+        child: const Text(
+          'ABS',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: Colors.grey,
+          ),
+        ),
+      );
+    }
+
+    return StatusBadge(status: status);
   }
 
   @override
@@ -149,64 +183,68 @@ class _TeamPageState extends State<TeamPage> {
           final attendance = (w['attendance'] ?? 'PRESENT') as String;
           final isAbsent = attendance == 'ABS';
 
-          return ListTile(
-            dense: true,
-            title: Text(
-              w['name'],
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isAbsent ? Colors.grey : null,
-                fontWeight: FontWeight.w600,
+          // On garde le bouton "présence" actif même si ABS,
+          // mais on rend tout le reste "inactif" visuellement.
+          final tileOpacity = isAbsent ? 0.45 : 1.0;
+
+          return Opacity(
+            opacity: tileOpacity,
+            child: ListTile(
+              dense: true,
+              title: Text(
+                w['name'],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(isAbsent ? 'Absent' : 'Présent'),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(isAbsent ? 'Absent' : 'Présent'),
 
-                if ((w['controlled'] == false) && !isAbsent) ...[
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Non contrôlé',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ],
+                  if ((w['controlled'] == false) && !isAbsent) ...[
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Non contrôlé',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ],
 
-                if (w['lastCheckAt'] != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Dernier contrôle: ${w['lastCheckAt']}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ],
+                  if (w['lastCheckAt'] != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Dernier contrôle: ${prettyDateShort(w['lastCheckAt'] as String?)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
 
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: SizedBox(
-                    height: 32,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      height: 32,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        // ✅ actif même si ABS (sinon tu ne peux plus remettre présent)
+                        onPressed: () => toggleAttendance(w as Map),
+                        child: Text(isAbsent ? 'Mettre présent' : 'Mettre ABS'),
                       ),
-                      onPressed: () => toggleAttendance(w as Map),
-                      child: Text(isAbsent ? 'Mettre présent' : 'Mettre ABS'),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
+              trailing: _attendanceBadge(isAbsent: isAbsent, status: status),
+              onTap: isAbsent
+                  ? null
+                  : () async {
+                      final changed = await context.push('/workers/${w['id']}/check');
+                      if (changed == true) loadWorkers();
+                    },
             ),
-            trailing: StatusBadge(status: status),
-            onTap: isAbsent
-                ? null
-                : () async {
-                    final changed =
-                        await context.push('/workers/${w['id']}/check');
-                    if (changed == true) loadWorkers();
-                  },
           );
         },
       ),

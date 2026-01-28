@@ -50,14 +50,16 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
     }
   }
 
+  // ✅ FIX TIMEZONE + format lisible FR
   String prettyDate(String? iso) {
-    if (iso == null) return '-';
-    if (iso.length >= 16) {
-      final d = iso.substring(0, 10);
-      final t = iso.substring(11, 16);
-      return '$d $t';
+    if (iso == null || iso.isEmpty) return '-';
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      String two(int n) => n.toString().padLeft(2, '0');
+      return '${two(dt.day)}/${two(dt.month)}/${dt.year} ${two(dt.hour)}:${two(dt.minute)}';
+    } catch (_) {
+      return iso;
     }
-    return iso;
   }
 
   @override
@@ -157,7 +159,6 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
         'teamId': teamId, // ✅ PLUS EN DUR
         'items': items,
       };
-
 
       await api.dio.post('/checks', data: payload);
 
