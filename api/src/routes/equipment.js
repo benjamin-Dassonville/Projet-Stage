@@ -32,9 +32,14 @@ function toMax(value) {
 router.get("/", requireRoleManager, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `select id, name, max_misses_before_notif as "maxMissesBeforeNotif"
-       from equipment
-       order by name asc`
+      `
+      select
+        id,
+        name,
+        max_misses_before_notif as "maxMissesBeforeNotif"
+      from equipment
+      order by name asc
+      `
     );
     res.json(rows);
   } catch (e) {
@@ -59,20 +64,29 @@ router.post("/", requireRoleManager, async (req, res, next) => {
       equipmentId,
     ]);
     if (exists.rowCount > 0) {
-      return res.status(409).json({ error: "Equipment already exists", id: equipmentId });
+      return res.status(409).json({
+        error: "Equipment already exists",
+        id: equipmentId,
+      });
     }
 
     const { rows } = await pool.query(
       `
       insert into equipment (id, name, max_misses_before_notif)
       values ($1, $2, $3)
-      returning id, name, max_misses_before_notif as "maxMissesBeforeNotif"
+      returning
+        id,
+        name,
+        max_misses_before_notif as "maxMissesBeforeNotif"
       `,
       [equipmentId, cleanName, max]
     );
+
     res.status(201).json(rows[0]);
   } catch (e) {
-    if (e?.code === "23505") return res.status(409).json({ error: "Equipment id already exists" });
+    if (e?.code === "23505") {
+      return res.status(409).json({ error: "Equipment id already exists" });
+    }
     next(e);
   }
 });
@@ -83,14 +97,17 @@ router.patch("/:equipmentId", requireRoleManager, async (req, res, next) => {
     const equipmentId = String(req.params.equipmentId);
     const { name, maxMissesBeforeNotif } = req.body || {};
 
-    const cleanName = name === undefined ? undefined : String(name || "").trim();
-    const max = maxMissesBeforeNotif === undefined ? undefined : toMax(maxMissesBeforeNotif);
+    const cleanName =
+      name === undefined ? undefined : String(name || "").trim();
+    const max =
+      maxMissesBeforeNotif === undefined
+        ? undefined
+        : toMax(maxMissesBeforeNotif);
 
     if (cleanName !== undefined && cleanName.length === 0) {
       return res.status(400).json({ error: "Missing name" });
     }
 
-    // update partiel
     const { rows } = await pool.query(
       `
       update equipment
@@ -98,7 +115,10 @@ router.patch("/:equipmentId", requireRoleManager, async (req, res, next) => {
         name = coalesce($2, name),
         max_misses_before_notif = coalesce($3, max_misses_before_notif)
       where id = $1
-      returning id, name, max_misses_before_notif as "maxMissesBeforeNotif"
+      returning
+        id,
+        name,
+        max_misses_before_notif as "maxMissesBeforeNotif"
       `,
       [equipmentId, cleanName ?? null, max ?? null]
     );
@@ -114,13 +134,17 @@ router.patch("/:equipmentId", requireRoleManager, async (req, res, next) => {
 router.delete("/:equipmentId", requireRoleManager, async (req, res, next) => {
   try {
     const equipmentId = String(req.params.equipmentId);
-    const { rowCount } = await pool.query(`delete from equipment where id = $1`, [equipmentId]);
+    const { rowCount } = await pool.query(
+      `delete from equipment where id = $1`,
+      [equipmentId]
+    );
     if (rowCount === 0) return res.status(404).json({ error: "Not found" });
     res.json({ ok: true });
   } catch (e) {
     if (e?.code === "23503") {
       return res.status(409).json({
-        error: "Cannot delete equipment: it is referenced (checks or role_equipment).",
+        error:
+          "Cannot delete equipment: it is referenced (checks or role_equipment).",
       });
     }
     next(e);

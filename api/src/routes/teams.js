@@ -14,6 +14,10 @@ function makeWorkerIdFromEmployeeNumber(employeeNumber) {
 /**
  * GET /teams/:teamId/workers
  * Liste les workers d'une équipe
+ *
+ * ✅ Ajoute:
+ * - hasAlert: boolean (seuil dépassé pour au moins 1 équipement)
+ * - alertsCount: number (nb d'équipements en alerte)
  */
 router.get("/:teamId/workers", async (req, res) => {
   const teamId = String(req.params.teamId);
@@ -36,8 +40,26 @@ router.get("/:teamId/workers", async (req, res) => {
         w.attendance,
         w.team_id as "teamId",
         w.controlled,
-        w.last_check_at as "lastCheckAt"
+        w.last_check_at as "lastCheckAt",
+
+        -- ✅ Comptage alertes par worker (strikes >= max + notified=true)
+        coalesce(a.alerts_count, 0)::int as "alertsCount",
+        (coalesce(a.alerts_count, 0) > 0) as "hasAlert"
+
       from workers w
+
+      left join (
+        select
+          s.worker_id,
+          count(*) as alerts_count
+        from worker_equipment_strikes s
+        join equipment e on e.id = s.equipment_id
+        where e.max_misses_before_notif > 0
+          and s.notified = true
+          and s.strikes >= e.max_misses_before_notif
+        group by s.worker_id
+      ) a on a.worker_id = w.id
+
       where w.team_id = $1
       order by w.name asc
       `,
@@ -200,7 +222,6 @@ router.post("/:teamId/workers", async (req, res) => {
 
     return res.json({ ok: true, mode: "created", worker: ins.rows[0] });
   } catch (e) {
-    // utile si tu te reprends un 23505
     if (e?.code === "23505") {
       return res.status(409).json({ error: "Employee number or worker id already exists" });
     }

@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 
-/// Roles & Equipment manager
-/// - Accessible only to Chef + Direction (enforced by router.dart)
-/// - UX: master-detail on wide screens, bottom sheet navigation on mobile
 class RolesManagerPage extends StatefulWidget {
   const RolesManagerPage({super.key});
 
@@ -88,9 +85,7 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
   }
 
   Future<void> _loadRoleEquipments(String roleId) async {
-    setState(() {
-      loadingEquip = true;
-    });
+    setState(() => loadingEquip = true);
 
     try {
       final api = ApiClient();
@@ -110,9 +105,7 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        loadingEquip = false;
-      });
+      setState(() => loadingEquip = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erreur chargement équipements: $e')),
       );
@@ -222,9 +215,8 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur création rôle: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Erreur création rôle: $e')));
     }
   }
 
@@ -246,9 +238,8 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
       await _loadRoles(keepSelectedId: id);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur renommage: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Erreur renommage: $e')));
     }
   }
 
@@ -259,7 +250,8 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
 
     final ok = await _confirm(
       title: 'Supprimer rôle',
-      message: 'Supprimer "$label" ?\n\nLes associations équipements seront supprimées.',
+      message:
+          'Supprimer "$label" ?\n\nLes associations équipements seront supprimées.',
     );
     if (!ok) return;
 
@@ -277,6 +269,192 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
     }
   }
 
+  // ✅ POPUP dédié : création équipement + seuil
+  Future<_CreateEquipPayload?> _createEquipmentDialog() async {
+    final nameCtrl = TextEditingController();
+    final limitCtrl = TextEditingController(text: '0');
+
+    bool validIntGe0(String v) {
+      final t = v.trim();
+      final n = int.tryParse(t);
+      return n != null && n >= 0;
+    }
+
+    final saved = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => StatefulBuilder(
+            builder: (ctx, setLocal) {
+              final nameOk = nameCtrl.text.trim().isNotEmpty;
+              final limitOk = validIntGe0(limitCtrl.text);
+
+              return AlertDialog(
+                title: const Text('Créer un équipement'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      autofocus: true,
+                      onChanged: (_) => setLocal(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Nom',
+                        hintText: 'ex: Gants',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: limitCtrl,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setLocal(() {}),
+                      decoration: InputDecoration(
+                        labelText: "Seuil (nb d'oublis avant notif)",
+                        hintText: '0 = désactivé',
+                        errorText: limitCtrl.text.trim().isEmpty || limitOk
+                            ? null
+                            : 'Doit être un entier ≥ 0',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "0 = pas de seuil → aucun strike / aucune alerte.",
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Annuler'),
+                  ),
+                  ElevatedButton(
+                    onPressed: (nameOk && limitOk)
+                        ? () => Navigator.pop(ctx, true)
+                        : null,
+                    child: const Text('Créer'),
+                  ),
+                ],
+              );
+            },
+          ),
+        ) ??
+        false;
+
+    if (!saved) {
+      nameCtrl.dispose();
+      limitCtrl.dispose();
+      return null;
+    }
+
+    final name = nameCtrl.text.trim();
+    final max = int.tryParse(limitCtrl.text.trim()) ?? 0;
+    nameCtrl.dispose();
+    limitCtrl.dispose();
+
+    if (name.isEmpty) return null;
+    if (max < 0) return null;
+
+    return _CreateEquipPayload(name: name, maxMissesBeforeNotif: max);
+  }
+
+  // ✅ NOUVEAU : popup "Modifier équipement" (nom + seuil)
+  Future<_EditEquipPayload?> _editEquipmentDialog({
+    required String initialName,
+    required int initialMax,
+  }) async {
+    final nameCtrl = TextEditingController(text: initialName);
+    final limitCtrl = TextEditingController(text: initialMax.toString());
+
+    bool validIntGe0(String v) {
+      final t = v.trim();
+      final n = int.tryParse(t);
+      return n != null && n >= 0;
+    }
+
+    final saved = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => StatefulBuilder(
+            builder: (ctx, setLocal) {
+              final nameOk = nameCtrl.text.trim().isNotEmpty;
+              final limitOk = validIntGe0(limitCtrl.text);
+
+              return AlertDialog(
+                title: const Text('Modifier équipement'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      autofocus: true,
+                      onChanged: (_) => setLocal(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Nom',
+                        hintText: 'ex: Gants',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: limitCtrl,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setLocal(() {}),
+                      decoration: InputDecoration(
+                        labelText: "Seuil (nb d'oublis avant notif)",
+                        hintText: '0 = désactivé',
+                        errorText: limitCtrl.text.trim().isEmpty || limitOk
+                            ? null
+                            : 'Doit être un entier ≥ 0',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "0 = désactivé → plus d’alertes/strikes pour cet équipement.",
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Annuler'),
+                  ),
+                  ElevatedButton(
+                    onPressed: (nameOk && limitOk)
+                        ? () => Navigator.pop(ctx, true)
+                        : null,
+                    child: const Text('Enregistrer'),
+                  ),
+                ],
+              );
+            },
+          ),
+        ) ??
+        false;
+
+    if (!saved) {
+      nameCtrl.dispose();
+      limitCtrl.dispose();
+      return null;
+    }
+
+    final name = nameCtrl.text.trim();
+    final max = int.tryParse(limitCtrl.text.trim());
+
+    nameCtrl.dispose();
+    limitCtrl.dispose();
+
+    if (name.isEmpty) return null;
+    if (max == null || max < 0) return null;
+
+    return _EditEquipPayload(name: name, maxMissesBeforeNotif: max);
+  }
+
   Future<void> _openAddEquipmentSheet() async {
     final roleId = selectedRole?['id']?.toString();
     if (roleId == null || roleId.isEmpty) return;
@@ -289,23 +467,22 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
       all = (res.data as List).cast<Map<String, dynamic>>();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Erreur chargement équipements: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur chargement équipements: $e')),
+      );
       return;
     }
 
-    // pour filtrer déjà assignés
     final assignedIds = roleEquipments.map((e) => e['id']?.toString()).toSet();
 
     if (!mounted) return;
-    final selected = await showModalBottomSheet<_EquipPickResult>(
+    final picked = await showModalBottomSheet<_EquipSheetResult>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
       enableDrag: true,
       builder: (sheetContext) {
         final search = TextEditingController();
-        final createCtrl = TextEditingController();
 
         return StatefulBuilder(
           builder: (ctx, setLocal) {
@@ -342,9 +519,19 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                       const Expanded(
                         child: Text(
                           'Ajouter un équipement',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                          style:
+                              TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                         ),
                       ),
+                      FilledButton.icon(
+                        onPressed: () => Navigator.pop(
+                          sheetContext,
+                          const _EquipSheetResult.create(),
+                        ),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Créer'),
+                      ),
+                      const SizedBox(width: 8),
                       IconButton(
                         tooltip: 'Fermer',
                         onPressed: () => Navigator.pop(sheetContext),
@@ -372,41 +559,6 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-
-                  // Bloc "création rapide" (UI un peu différente)
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.add_circle_outline),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: createCtrl,
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              border: InputBorder.none,
-                              hintText: 'Créer un nouvel équipement…',
-                            ),
-                          ),
-                        ),
-                        FilledButton(
-                          onPressed: () {
-                            final name = createCtrl.text.trim();
-                            if (name.isEmpty) return;
-                            Navigator.pop(sheetContext, _EquipPickResult.create(name));
-                          },
-                          child: const Text('Créer'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
                   Flexible(
                     child: filtered.isEmpty
                         ? const Padding(
@@ -421,11 +573,13 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                               final e = filtered[i];
                               final id = (e['id'] ?? '').toString();
                               final name = (e['name'] ?? '').toString();
+                              final max = (e['maxMissesBeforeNotif'] ?? 0);
                               final already = assignedIds.contains(id);
 
                               return ListTile(
                                 enabled: !already,
                                 title: Text(name.isEmpty ? id : name),
+                                subtitle: Text('Seuil: $max'),
                                 trailing: already
                                     ? const Icon(Icons.check_circle, size: 18)
                                     : const Icon(Icons.add, size: 18),
@@ -433,7 +587,7 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                                     ? null
                                     : () => Navigator.pop(
                                           sheetContext,
-                                          _EquipPickResult.pick(id),
+                                          _EquipSheetResult.pick(id),
                                         ),
                               );
                             },
@@ -447,24 +601,44 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
       },
     );
 
-    if (selected == null) return;
+    if (picked == null) return;
 
     try {
       final api = ApiClient();
-      if (selected.mode == _EquipPickMode.pick) {
+
+      if (picked.mode == _EquipSheetMode.pick) {
         await api.dio.post('/roles/$roleId/equipment', data: {
-          'equipmentId': selected.value,
+          'equipmentId': picked.value,
         });
-      } else {
-        await api.dio.post('/roles/$roleId/equipment', data: {
-          'name': selected.value,
-        });
+        await _loadRoleEquipments(roleId);
+        return;
       }
+
+      // mode create -> popup dédié
+      final payload = await _createEquipmentDialog();
+      if (payload == null) return;
+
+      final createRes = await api.dio.post('/equipment', data: {
+        'name': payload.name,
+        'maxMissesBeforeNotif': payload.maxMissesBeforeNotif,
+      });
+
+      final created = (createRes.data as Map).cast<String, dynamic>();
+      final createdId = (created['id'] ?? '').toString();
+      if (createdId.isEmpty) {
+        throw Exception('Création équipement: id manquant');
+      }
+
+      await api.dio.post('/roles/$roleId/equipment', data: {
+        'equipmentId': createdId,
+      });
+
       await _loadRoleEquipments(roleId);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Erreur ajout équipement: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur ajout équipement: $e')),
+      );
     }
   }
 
@@ -490,11 +664,13 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
       await _loadRoleEquipments(roleId);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Erreur suppression: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur suppression: $e')),
+      );
     }
   }
 
+  // ✅ Modification globale : nom uniquement (conservé si tu veux)
   Future<void> _renameEquipment(String equipmentId, String currentName) async {
     final newName = await _promptText(
       title: 'Renommer équipement',
@@ -507,15 +683,53 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
     try {
       final api = ApiClient();
       await api.dio.patch('/equipment/$equipmentId', data: {'name': newName});
-      // Reload role equipments because name changed
       final roleId = selectedRole?['id']?.toString();
       if (roleId != null && roleId.isNotEmpty) {
         await _loadRoleEquipments(roleId);
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Erreur renommage: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur renommage: $e')),
+      );
+    }
+  }
+
+  // ✅ NOUVEAU : Modifier "nom + seuil" en un seul popup + 1 PATCH
+  Future<void> _editEquipment(Map<String, dynamic> equip) async {
+    final id = (equip['id'] ?? '').toString();
+    if (id.isEmpty) return;
+
+    final initialName = (equip['name'] ?? id).toString();
+    final initialMax = int.tryParse('${equip['maxMissesBeforeNotif'] ?? 0}') ?? 0;
+
+    final payload = await _editEquipmentDialog(
+      initialName: initialName,
+      initialMax: initialMax,
+    );
+    if (payload == null) return;
+
+    try {
+      final api = ApiClient();
+      await api.dio.patch('/equipment/$id', data: {
+        'name': payload.name,
+        'maxMissesBeforeNotif': payload.maxMissesBeforeNotif,
+      });
+
+      final roleId = selectedRole?['id']?.toString();
+      if (roleId != null && roleId.isNotEmpty) {
+        await _loadRoleEquipments(roleId);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Équipement mis à jour ✅')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur modification: $e')),
+      );
     }
   }
 
@@ -539,8 +753,9 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
           .showSnackBar(const SnackBar(content: Text('Équipement supprimé')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Erreur suppression: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur suppression: $e')),
+      );
     }
   }
 
@@ -587,7 +802,6 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                     final r = list[i];
                     final id = (r['id'] ?? '').toString();
                     final label = (r['label'] ?? '').toString();
-                    final count = r['equipmentCount'];
                     final selected = id == selId;
 
                     return ListTile(
@@ -631,7 +845,8 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
               Expanded(
                 child: Text(
                   roleLabel.isEmpty ? 'Équipements' : 'Équipements • $roleLabel',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  style:
+                      const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -677,19 +892,25 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                         final e = list[i];
                         final id = (e['id'] ?? '').toString();
                         final name = (e['name'] ?? '').toString();
+                        final max = (e['maxMissesBeforeNotif'] ?? 0);
 
                         return ListTile(
                           leading: const Icon(Icons.construction_outlined),
                           title: Text(name.isEmpty ? id : name),
+                          subtitle: Text('Seuil: $max'),
                           trailing: PopupMenuButton<String>(
                             onSelected: (v) {
+                              if (v == 'edit') _editEquipment(e);
                               if (v == 'remove') _removeEquipment(id);
-                              if (v == 'rename') _renameEquipment(id, name);
-                              if (v == 'delete') _deleteEquipment(id, name);
+                              if (v == 'delete') _deleteEquipment(id, name.isEmpty ? id : name);
                             },
                             itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Modifier (nom + seuil)'),
+                              ),
+                              PopupMenuDivider(),
                               PopupMenuItem(value: 'remove', child: Text('Retirer du rôle')),
-                              PopupMenuItem(value: 'rename', child: Text('Renommer')),
                               PopupMenuItem(value: 'delete', child: Text('Supprimer (global)')),
                             ],
                           ),
@@ -767,7 +988,6 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
           final isWide = constraints.maxWidth >= 900;
 
           if (isWide) {
-            // Master-detail "desktop" : deux panneaux
             return Row(
               children: [
                 SizedBox(
@@ -787,7 +1007,6 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
             );
           }
 
-          // Mobile : expérience "différente" -> mini switcher Role/Equip
           return DefaultTabController(
             length: 2,
             child: Column(
@@ -832,17 +1051,34 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
   }
 }
 
-enum _EquipPickMode { pick, create }
+class _CreateEquipPayload {
+  final String name;
+  final int maxMissesBeforeNotif;
+  const _CreateEquipPayload({
+    required this.name,
+    required this.maxMissesBeforeNotif,
+  });
+}
 
-class _EquipPickResult {
-  final _EquipPickMode mode;
-  final String value;
+class _EditEquipPayload {
+  final String name;
+  final int maxMissesBeforeNotif;
+  const _EditEquipPayload({
+    required this.name,
+    required this.maxMissesBeforeNotif,
+  });
+}
 
-  const _EquipPickResult._(this.mode, this.value);
+enum _EquipSheetMode { pick, create }
 
-  static _EquipPickResult pick(String equipmentId) =>
-      _EquipPickResult._(_EquipPickMode.pick, equipmentId);
+class _EquipSheetResult {
+  final _EquipSheetMode mode;
+  final String? value;
 
-  static _EquipPickResult create(String name) =>
-      _EquipPickResult._(_EquipPickMode.create, name);
+  const _EquipSheetResult._(this.mode, this.value);
+
+  const _EquipSheetResult.create() : this._(_EquipSheetMode.create, null);
+
+  static _EquipSheetResult pick(String equipmentId) =>
+      _EquipSheetResult._(_EquipSheetMode.pick, equipmentId);
 }

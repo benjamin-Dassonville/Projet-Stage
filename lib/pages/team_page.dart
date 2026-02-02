@@ -109,6 +109,38 @@ class _TeamPageState extends State<TeamPage> {
     return StatusBadge(status: status);
   }
 
+  // ✅ Petit badge "!" (alerte seuil dépassé)
+  Widget _alertBang({required int alertsCount}) {
+    if (alertsCount <= 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.orange.withOpacity(0.8)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
+          const SizedBox(width: 6),
+          const Text(
+            '!',
+            style: TextStyle(fontWeight: FontWeight.w900, color: Colors.orange),
+          ),
+          if (alertsCount > 1) ...[
+            const SizedBox(width: 6),
+            Text(
+              alertsCount.toString(),
+              style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.orange),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
@@ -177,11 +209,16 @@ class _TeamPageState extends State<TeamPage> {
         itemCount: workers.length,
         separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (_, i) {
-          final w = workers[i];
+          final w = workers[i] as Map;
 
           final status = (w['status'] ?? 'OK') as String;
           final attendance = (w['attendance'] ?? 'PRESENT') as String;
           final isAbsent = attendance == 'ABS';
+
+          // ✅ data API : hasAlert + alertsCount
+          final alertsCount = (w['alertsCount'] ?? 0) is int
+              ? (w['alertsCount'] ?? 0) as int
+              : int.tryParse((w['alertsCount'] ?? '0').toString()) ?? 0;
 
           // On garde le bouton "présence" actif même si ABS,
           // mais on rend tout le reste "inactif" visuellement.
@@ -192,7 +229,7 @@ class _TeamPageState extends State<TeamPage> {
             child: ListTile(
               dense: true,
               title: Text(
-                w['name'],
+                (w['name'] ?? '').toString(),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w600),
@@ -230,14 +267,25 @@ class _TeamPageState extends State<TeamPage> {
                           visualDensity: VisualDensity.compact,
                         ),
                         // ✅ actif même si ABS (sinon tu ne peux plus remettre présent)
-                        onPressed: () => toggleAttendance(w as Map),
+                        onPressed: () => toggleAttendance(w),
                         child: Text(isAbsent ? 'Mettre présent' : 'Mettre ABS'),
                       ),
                     ),
                   ),
                 ],
               ),
-              trailing: _attendanceBadge(isAbsent: isAbsent, status: status),
+
+              // ✅ trailing = "!" + badge
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // On affiche l'alerte même si absent ? moi je dis oui (info utile).
+                  _alertBang(alertsCount: alertsCount),
+                  if (alertsCount > 0) const SizedBox(width: 8),
+                  _attendanceBadge(isAbsent: isAbsent, status: status),
+                ],
+              ),
+
               onTap: isAbsent
                   ? null
                   : () async {

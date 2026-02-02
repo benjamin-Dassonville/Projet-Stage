@@ -7,7 +7,6 @@ const UNASSIGNED_TEAM_ID = process.env.UNASSIGNED_TEAM_ID || "UNASSIGNED";
 
 /**
  * GET /workers/unassigned
- * Liste les travailleurs non affectés (team_id = UNASSIGNED)
  */
 router.get("/unassigned", async (req, res) => {
   try {
@@ -28,7 +27,11 @@ router.get("/unassigned", async (req, res) => {
       [UNASSIGNED_TEAM_ID]
     );
 
-    return res.json({ teamId: UNASSIGNED_TEAM_ID, count: rows.length, workers: rows });
+    return res.json({
+      teamId: UNASSIGNED_TEAM_ID,
+      count: rows.length,
+      workers: rows,
+    });
   } catch (e) {
     console.error("GET /workers/unassigned error:", e);
     return res.status(500).json({ error: "Server error" });
@@ -37,7 +40,6 @@ router.get("/unassigned", async (req, res) => {
 
 /**
  * GET /workers/:workerId
- * Infos du travailleur (DB)
  */
 router.get("/:workerId", async (req, res) => {
   const workerId = String(req.params.workerId);
@@ -64,10 +66,7 @@ router.get("/:workerId", async (req, res) => {
       [workerId]
     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "Worker not found" });
-    }
-
+    if (rows.length === 0) return res.status(404).json({ error: "Worker not found" });
     return res.json(rows[0]);
   } catch (e) {
     console.error("GET /workers/:workerId error:", e);
@@ -77,33 +76,25 @@ router.get("/:workerId", async (req, res) => {
 
 /**
  * GET /workers/:workerId/required-equipment
- * Matériel requis (FULL DB)
- * via workers.role -> role_equipment -> equipment
- *
- * ✅ renvoie aussi teamId (important pour POST /checks)
  */
 router.get("/:workerId/required-equipment", async (req, res) => {
   const workerId = String(req.params.workerId);
 
   try {
-    // 1) récupérer teamId + rôle du worker
     const w = await pool.query(
       `select id, role, team_id as "teamId" from workers where id = $1 limit 1`,
       [workerId]
     );
 
-    if (w.rows.length === 0) {
-      return res.status(404).json({ error: "Worker not found" });
-    }
+    if (w.rows.length === 0) return res.status(404).json({ error: "Worker not found" });
 
-    const roleId = w.rows[0].role;         // peut être null
-    const teamId = w.rows[0].teamId;       // ✅ important
+    const roleId = w.rows[0].role; // peut être null
+    const teamId = w.rows[0].teamId;
 
     if (!roleId) {
       return res.json({ workerId, teamId, role: null, equipment: [] });
     }
 
-    // 2) équipements requis pour ce rôle
     const eq = await pool.query(
       `
       select
@@ -131,7 +122,6 @@ router.get("/:workerId/required-equipment", async (req, res) => {
 
 /**
  * GET /workers/:workerId/checks?range=today|7d|30d|365d
- * Historique des contrôles (FULL DB)
  */
 router.get("/:workerId/checks", async (req, res) => {
   const workerId = String(req.params.workerId);
@@ -166,13 +156,9 @@ router.get("/:workerId/checks", async (req, res) => {
   const since = rangeToSince(range);
 
   try {
-    // 1) vérifier que le worker existe
     const exists = await pool.query(`select 1 from workers where id = $1`, [workerId]);
-    if (exists.rowCount === 0) {
-      return res.status(404).json({ error: "Worker not found" });
-    }
+    if (exists.rowCount === 0) return res.status(404).json({ error: "Worker not found" });
 
-    // 2) récupérer les checks + items
     const { rows } = await pool.query(
       `
       select
@@ -196,7 +182,6 @@ router.get("/:workerId/checks", async (req, res) => {
       [workerId, since.toISOString()]
     );
 
-    // 3) regrouper par check
     const byCheck = new Map();
 
     for (const r of rows) {
@@ -236,15 +221,12 @@ router.get("/:workerId/checks", async (req, res) => {
 
 /**
  * PATCH /workers/:workerId/team
- * Body: { teamId: "..." }
  */
 router.patch("/:workerId/team", async (req, res) => {
   const workerId = String(req.params.workerId);
   const teamId = req.body?.teamId ? String(req.body.teamId) : null;
 
-  if (!teamId) {
-    return res.status(400).json({ error: "Missing teamId" });
-  }
+  if (!teamId) return res.status(400).json({ error: "Missing teamId" });
 
   try {
     const t = await pool.query(`select 1 from teams where id = $1`, [teamId]);
@@ -273,8 +255,9 @@ router.patch("/:workerId/team", async (req, res) => {
   }
 });
 
-// PATCH /workers/:workerId/role
-// Body: { role: "debroussailleur" } ou { role: null }
+/**
+ * PATCH /workers/:workerId/role
+ */
 router.patch("/:workerId/role", async (req, res) => {
   const workerId = String(req.params.workerId);
   const role = req.body?.role === null ? null : String(req.body?.role || "").trim();
@@ -305,9 +288,9 @@ router.patch("/:workerId/role", async (req, res) => {
   }
 });
 
-// PATCH /workers/:workerId/profile
-// Body: { teamId: "...", role: "..." }
-// -> update team + role (et rien d'autre)
+/**
+ * PATCH /workers/:workerId/profile
+ */
 router.patch("/:workerId/profile", async (req, res) => {
   const workerId = String(req.params.workerId);
   const teamId = req.body?.teamId ? String(req.body.teamId) : null;
@@ -316,7 +299,6 @@ router.patch("/:workerId/profile", async (req, res) => {
   if (!teamId) return res.status(400).json({ error: "Missing teamId" });
 
   try {
-    // team existe
     const t = await pool.query(`select 1 from teams where id = $1`, [teamId]);
     if (t.rowCount === 0) return res.status(404).json({ error: "Team not found" });
 
@@ -339,6 +321,112 @@ router.patch("/:workerId/profile", async (req, res) => {
     return res.json({ ok: true, worker: upd.rows[0] });
   } catch (e) {
     console.error("PATCH /workers/:workerId/profile error:", e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+/**
+ * ✅ GET /workers/:workerId/alerts
+ * Renvoie les équipements en alerte: max>0 + notified=true + strikes>=max
+ */
+router.get("/:workerId/alerts", async (req, res) => {
+  const workerId = String(req.params.workerId);
+
+  try {
+    const exists = await pool.query(`select 1 from workers where id = $1`, [workerId]);
+    if (exists.rowCount === 0) return res.status(404).json({ error: "Worker not found" });
+
+    const { rows } = await pool.query(
+      `
+      select
+        s.equipment_id as "equipmentId",
+        e.name as "equipmentName",
+        s.strikes as "missCount",
+        e.max_misses_before_notif as "maxMissesBeforeNotif",
+        s.last_strike_at as "lastStrikeAt"
+      from worker_equipment_strikes s
+      join equipment e on e.id = s.equipment_id
+      where s.worker_id = $1
+        and e.max_misses_before_notif > 0
+        and s.notified = true
+        and s.strikes >= e.max_misses_before_notif
+      order by s.last_strike_at desc
+      `,
+      [workerId]
+    );
+
+    return res.json({ workerId, alerts: rows });
+  } catch (e) {
+    console.error("GET /workers/:workerId/alerts error:", e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+/**
+ * ✅ POST /workers/:workerId/alerts/reset
+ * Reset complet : strikes=0 et notified=false pour ce worker
+ */
+router.post("/:workerId/alerts/reset", async (req, res) => {
+  const workerId = String(req.params.workerId);
+
+  try {
+    const exists = await pool.query(`select 1 from workers where id = $1`, [workerId]);
+    if (exists.rowCount === 0) return res.status(404).json({ error: "Worker not found" });
+
+    const upd = await pool.query(
+      `
+      update worker_equipment_strikes
+      set strikes = 0,
+          notified = false
+      where worker_id = $1
+      returning equipment_id
+      `,
+      [workerId]
+    );
+
+    return res.json({ ok: true, resetCount: upd.rowCount });
+  } catch (e) {
+    console.error("POST /workers/:workerId/alerts/reset error:", e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+/**
+ * ✅ POST /workers/:workerId/alerts/:equipmentId/reset
+ * Reset par équipement : strikes=0 et notified=false pour ce worker + cet équipement
+ */
+router.post("/:workerId/alerts/:equipmentId/reset", async (req, res) => {
+  const workerId = String(req.params.workerId);
+  const equipmentId = String(req.params.equipmentId);
+
+  try {
+    const w = await pool.query(`select 1 from workers where id = $1`, [workerId]);
+    if (w.rowCount === 0) return res.status(404).json({ error: "Worker not found" });
+
+    const e = await pool.query(`select 1 from equipment where id = $1`, [equipmentId]);
+    if (e.rowCount === 0) return res.status(404).json({ error: "Equipment not found" });
+
+    const upd = await pool.query(
+      `
+      update worker_equipment_strikes
+      set strikes = 0,
+          notified = false
+      where worker_id = $1
+        and equipment_id = $2
+      returning worker_id, equipment_id
+      `,
+      [workerId, equipmentId]
+    );
+
+    // Si aucune ligne => il n’y avait pas de strikes enregistrés pour ce couple
+    return res.json({
+      ok: true,
+      workerId,
+      equipmentId,
+      existed: upd.rowCount > 0,
+    });
+  } catch (e) {
+    console.error("POST /workers/:workerId/alerts/:equipmentId/reset error:", e);
     return res.status(500).json({ error: "Server error" });
   }
 });

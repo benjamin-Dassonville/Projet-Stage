@@ -16,7 +16,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
   String? error;
 
   String role = '';
-  String teamId = ''; // ✅ IMPORTANT
+  String teamId = '';
   List equipment = [];
   final Map<String, String> statusByEquipId = {};
 
@@ -25,6 +25,11 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
   String historyRange = '7d'; // today | 7d | 30d | 365d
   List historyChecks = [];
   String? historyError;
+
+  // --- Alertes (seuil dépassé) ---
+  bool loadingAlerts = true;
+  List alerts = [];
+  String? alertsError;
 
   String labelForStatus(String s) {
     switch (s) {
@@ -45,12 +50,13 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
         return 'Conforme';
       case 'NON_CONFORME':
         return 'Non conforme';
+      case 'KO':
+        return 'KO';
       default:
         return r;
     }
   }
 
-  // ✅ FIX TIMEZONE + format lisible FR
   String prettyDate(String? iso) {
     if (iso == null || iso.isEmpty) return '-';
     try {
@@ -67,6 +73,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
     super.initState();
     loadRequiredEquipment();
     loadHistory();
+    loadAlerts();
   }
 
   Future<void> loadRequiredEquipment() async {
@@ -77,22 +84,16 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
 
     try {
       final api = ApiClient();
-      final res =
-          await api.dio.get('/workers/${widget.workerId}/required-equipment');
+      final res = await api.dio.get('/workers/${widget.workerId}/required-equipment');
 
-      // ✅ maintenant l’API renvoie teamId
       final newTeamId = (res.data['teamId'] ?? '').toString();
-
-      // role peut être null
       final newRole = (res.data['role'] ?? '').toString();
       final newEquipment = (res.data['equipment'] as List?) ?? [];
 
       statusByEquipId.clear();
       for (final e in newEquipment) {
         final id = (e['id'] ?? '').toString();
-        if (id.isNotEmpty) {
-          statusByEquipId[id] = 'OK';
-        }
+        if (id.isNotEmpty) statusByEquipId[id] = 'OK';
       }
 
       setState(() {
@@ -135,6 +136,64 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
     }
   }
 
+  Future<void> loadAlerts() async {
+    setState(() {
+      loadingAlerts = true;
+      alertsError = null;
+    });
+
+    try {
+      final api = ApiClient();
+      final res = await api.dio.get('/workers/${widget.workerId}/alerts');
+
+      setState(() {
+        alerts = (res.data['alerts'] as List?) ?? [];
+        loadingAlerts = false;
+      });
+    } catch (e) {
+      setState(() {
+        alertsError = e.toString();
+        loadingAlerts = false;
+      });
+    }
+  }
+
+  Future<void> resetAlertsAll() async {
+    try {
+      final api = ApiClient();
+      await api.dio.post('/workers/${widget.workerId}/alerts/reset');
+      await loadAlerts();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Alertes réinitialisées (global) ✅')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur reset global: $e')),
+      );
+    }
+  }
+
+  Future<void> resetAlertForEquipment(String equipmentId) async {
+    try {
+      final api = ApiClient();
+      await api.dio.post('/workers/${widget.workerId}/alerts/$equipmentId/reset');
+      await loadAlerts();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Alerte réinitialisée ✅')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur reset équipement: $e')),
+      );
+    }
+  }
+
   bool get isCompliant {
     return !statusByEquipId.values.any((s) => s == 'MANQUANT' || s == 'KO');
   }
@@ -156,7 +215,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
 
       final payload = {
         'workerId': widget.workerId,
-        'teamId': teamId, // ✅ PLUS EN DUR
+        'teamId': teamId,
         'items': items,
       };
 
@@ -168,6 +227,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
       );
 
       await loadHistory();
+      await loadAlerts();
 
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -196,7 +256,8 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
 
   Color? colorForResult(String r) {
     if (r == 'CONFORME') return Colors.green;
-    if (r == 'NON_CONFORME') return Colors.red;
+    if (r == 'NON_CONFORME') return Colors.orange;
+    if (r == 'KO') return Colors.red;
     return null;
   }
 
@@ -212,8 +273,89 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
       child: Text(
         labelForResult(result),
         style: TextStyle(
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           color: c ?? Colors.grey[800],
+        ),
+      ),
+    );
+  }
+
+  Widget _alertsBanner() {
+    if (loadingAlerts) return const SizedBox.shrink();
+
+    if (alertsError != null) {
+      return Card(
+        elevation: 0,
+        color: Colors.red.withOpacity(0.08),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text('Erreur alertes: $alertsError'),
+        ),
+      );
+    }
+
+    if (alerts.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      elevation: 0,
+      color: Colors.orange.withOpacity(0.12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Attention : seuil dépassé',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // ✅ Liste alertes + reset par équipement
+            ...alerts.map((a) {
+              final equipmentId = (a['equipmentId'] ?? '').toString();
+              final name = (a['equipmentName'] ?? equipmentId).toString();
+              final miss = (a['missCount'] ?? 0).toString();
+              final max = (a['maxMissesBeforeNotif'] ?? 0).toString();
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Expanded(child: Text('• $name — $miss/$max')),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: equipmentId.isEmpty
+                          ? null
+                          : () => resetAlertForEquipment(equipmentId),
+                      child: const Text('Reset'),
+                    ),
+                  ],
+                ),
+              );
+            }),
+
+            const SizedBox(height: 6),
+
+            // (optionnel) reset global
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: resetAlertsAll,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reset global (tout)'),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -247,6 +389,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
             onPressed: () async {
               await loadRequiredEquipment();
               await loadHistory();
+              await loadAlerts();
             },
             icon: const Icon(Icons.refresh),
           ),
@@ -255,12 +398,15 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _alertsBanner(),
+          if (!loadingAlerts && alerts.isNotEmpty) const SizedBox(height: 12),
+
           Text('Worker ID: ${widget.workerId}'),
           const SizedBox(height: 8),
           Text('Rôle mission : $role'),
           const SizedBox(height: 8),
           Text(
-            isCompliant ? 'Conforme' : 'Non conforme',
+            isCompliant ? 'Conforme' : 'Non conforme / KO',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: isCompliant ? Colors.green : Colors.red,
@@ -385,9 +531,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
                         )
                       else
                         ...items.map((it) {
-                          final name = (it['equipmentName'] ??
-                                  it['equipmentId'] ??
-                                  '-') as String;
+                          final name = (it['equipmentName'] ?? it['equipmentId'] ?? '-') as String;
                           final st = (it['status'] ?? '-') as String;
 
                           return Padding(

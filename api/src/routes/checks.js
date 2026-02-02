@@ -23,12 +23,9 @@ function workerStatusFromResult(result) {
 }
 
 // POST /checks
-// body: { workerId: "w1", teamId:"t1", items:[{equipmentId:"botte", status:"OK"}] }
 router.post("/", async (req, res) => {
-  console.log("POST /checks AUTH =", req.headers.authorization);
-  console.log("POST /checks body =", req.body);
-
   const client = await pool.connect();
+
   try {
     const { workerId, teamId, items } = req.body ?? {};
 
@@ -82,8 +79,10 @@ router.post("/", async (req, res) => {
         .json({ error: "Worker is ABSENT, cannot submit check" });
     }
 
-    // 3) Vérifier que les equipmentId existent
-    const uniqueEq = Array.from(new Set(items.map((it) => String(it.equipmentId))));
+    // 3) Vérifier que les equipmentId existent + récupérer max
+    const uniqueEq = Array.from(
+      new Set(items.map((it) => String(it.equipmentId)))
+    );
 
     const eqRes = await client.query(
       `
@@ -152,7 +151,7 @@ router.post("/", async (req, res) => {
       );
     }
 
-    // update worker (status lisible)
+    // update worker status
     await client.query(
       `
       update workers
@@ -164,8 +163,7 @@ router.post("/", async (req, res) => {
       [String(workerId), newWorkerStatus]
     );
 
-    // 7) règle "misses" + notification
-    // KO compte aussi ✅ (KO + MANQUANT)
+    // 7) strikes + notification
     const missItems = items.filter(
       (it) => it.status === "MANQUANT" || it.status === "KO"
     );
@@ -175,26 +173,29 @@ router.post("/", async (req, res) => {
       const eq = found.get(equipmentId);
       const max = Number(eq?.maxMissesBeforeNotif ?? 0);
 
-      // upsert compteur
+      // ✅ si max <= 0 : pas de seuil => pas de strikes (sinon tu pollues)
+      if (max <= 0) continue;
+
+      // upsert strikes (table réelle: worker_equipment_strikes)
       const up = await client.query(
         `
-        insert into worker_equipment_misses(worker_id, equipment_id, miss_count, last_miss_at)
-        values ($1, $2, 1, now())
+        insert into worker_equipment_strikes(worker_id, equipment_id, strikes, last_strike_at, notified)
+        values ($1, $2, 1, now(), false)
         on conflict (worker_id, equipment_id)
         do update set
-          miss_count = worker_equipment_misses.miss_count + 1,
-          last_miss_at = now()
-        returning miss_count, notified_at
+          strikes = worker_equipment_strikes.strikes + 1,
+          last_strike_at = now(),
+          notified = worker_equipment_strikes.notified
+        returning strikes, notified
         `,
         [String(workerId), equipmentId]
       );
 
-      const missCount = Number(up.rows[0]?.miss_count ?? 0);
-      const notifiedAt = up.rows[0]?.notified_at ?? null;
+      const strikes = Number(up.rows[0]?.strikes ?? 0);
+      const alreadyNotified = Boolean(up.rows[0]?.notified ?? false);
 
-      // notif seulement si max>0 et on atteint la limite, et pas déjà notifié
-      if (max > 0 && missCount >= max && !notifiedAt) {
-        // récupérer chef_id de l'équipe (si existe)
+      // notif seulement si seuil atteint, et pas déjà notifié
+      if (strikes >= max && !alreadyNotified) {
         const t = await client.query(
           `select chef_id as "chefId", name from teams where id = $1 limit 1`,
           [String(teamId)]
@@ -205,7 +206,7 @@ router.post("/", async (req, res) => {
         const workerName = w.name ?? String(workerId);
         const equipName = eq?.name ?? equipmentId;
 
-        const message = `Limite atteinte (${missCount}/${max}) : ${workerName} a oublié / KO "${equipName}" (équipe ${teamName}). RDV redressement.`;
+        const message = `Limite atteinte (${strikes}/${max}) : ${workerName} a oublié / KO "${equipName}" (équipe ${teamName}). RDV redressement.`;
 
         await client.query(
           `
@@ -222,11 +223,11 @@ router.post("/", async (req, res) => {
           ]
         );
 
-        // verrou anti-spam : on marque notified_at
+        // anti-spam : on bloque jusqu'au reset
         await client.query(
           `
-          update worker_equipment_misses
-          set notified_at = now()
+          update worker_equipment_strikes
+          set notified = true
           where worker_id = $1 and equipment_id = $2
           `,
           [String(workerId), equipmentId]
