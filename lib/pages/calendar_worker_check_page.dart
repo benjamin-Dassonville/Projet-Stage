@@ -24,6 +24,14 @@ class _CalendarWorkerCheckPageState extends State<CalendarWorkerCheckPage> {
   Map<String, dynamic>? check; // null si pas de check
   List<dynamic> items = [];
 
+  // For diff
+  bool loadingDiff = false;
+  String? diffError;
+  Map<String, dynamic>? diffData; // {hasUpdate, original, modified}
+  String selectedTab = 'modified'; // 'original' or 'modified'
+  List<dynamic> displayedItems = [];
+  final Map<String, String> equipmentNames = {};
+
   @override
   void initState() {
     super.initState();
@@ -96,14 +104,76 @@ class _CalendarWorkerCheckPageState extends State<CalendarWorkerCheckPage> {
         worker = (m['worker'] as Map?)?.cast<String, dynamic>();
         check = (m['check'] as Map?)?.cast<String, dynamic>(); // peut être null
         items = (m['items'] as List?) ?? [];
+        displayedItems = items;
+        equipmentNames.clear();
+        for (final it in items) {
+          final eid = (it['equipmentId'] ?? '').toString();
+          final name = (it['equipmentName'] ?? '').toString();
+          if (eid.isNotEmpty) equipmentNames[eid] = name;
+        }
         loading = false;
       });
+
+      // Load diff if modified
+      if (check != null) {
+        _loadDiff();
+      }
     } catch (e) {
       setState(() {
         error = e.toString();
         loading = false;
       });
     }
+  }
+
+  Future<void> _loadDiff() async {
+    if (check == null) return;
+
+    setState(() {
+      loadingDiff = true;
+      diffError = null;
+    });
+
+    try {
+      final api = ApiClient();
+      final res = await api.dio.get('/check-audits/${check!['id']}/diff');
+
+      final d = (res.data as Map).cast<String, dynamic>();
+      setState(() {
+        diffData = d;
+        loadingDiff = false;
+        _updateDisplayedItems();
+      });
+    } catch (e) {
+      setState(() {
+        diffError = e.toString();
+        loadingDiff = false;
+      });
+    }
+  }
+
+  void _updateDisplayedItems() {
+    if (diffData == null || diffData!['hasUpdate'] != true) {
+      displayedItems = items;
+      return;
+    }
+
+    final snap = selectedTab == 'original' ? diffData!['original'] : diffData!['modified'];
+    final rawItems = (snap['items'] as List?) ?? [];
+    displayedItems = rawItems.map((it) {
+      final eid = (it['equipmentId'] ?? '').toString();
+      return {
+        ...it,
+        'equipmentName': equipmentNames[eid] ?? eid,
+      };
+    }).toList();
+  }
+
+  void _onTabChanged(Set<String> selection) {
+    setState(() {
+      selectedTab = selection.first;
+      _updateDisplayedItems();
+    });
   }
 
   Widget _pill(String text, Color c) {
@@ -163,6 +233,20 @@ class _CalendarWorkerCheckPageState extends State<CalendarWorkerCheckPage> {
                           ),
                         ),
                       ),
+                      if (check != null)
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: SegmentedButton<String>(
+                              segments: const [
+                                ButtonSegment(value: 'original', label: Text('Original')),
+                                ButtonSegment(value: 'modified', label: Text('Modifié')),
+                              ],
+                              selected: {selectedTab},
+                              onSelectionChanged: _onTabChanged,
+                            ),
+                          ),
+                        ),
                       const SizedBox(height: 12),
                       if (check == null)
                         const Expanded(
@@ -180,10 +264,10 @@ class _CalendarWorkerCheckPageState extends State<CalendarWorkerCheckPage> {
                         Expanded(
                           child: Card(
                             child: ListView.separated(
-                              itemCount: items.length,
+                              itemCount: displayedItems.length,
                               separatorBuilder: (_, __) => const Divider(height: 1),
                               itemBuilder: (_, i) {
-                                final it = items[i] as Map;
+                                final it = displayedItems[i] as Map;
                                 final equipName =
                                     (it['equipmentName'] ?? it['equipmentId'] ?? '-').toString();
                                 final st = (it['status'] ?? '-').toString();

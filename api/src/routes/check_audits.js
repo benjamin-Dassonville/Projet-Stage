@@ -35,61 +35,35 @@ router.get("/:checkId/diff", async (req, res, next) => {
   try {
     const { checkId } = req.params;
 
-    const origQ = await pool.query(
+    const { rows } = await pool.query(
       `
       select revision, action, snapshot
       from check_audits
       where check_id = $1
       order by revision asc
-      limit 1
       `,
       [checkId]
     );
 
-    const modQ = await pool.query(
-      `
-      select revision, action, snapshot
-      from check_audits
-      where check_id = $1
-      order by revision desc
-      limit 1
-      `,
-      [checkId]
-    );
-
-    if (origQ.rows.length === 0 || modQ.rows.length === 0) {
+    if (rows.length < 2) {
       return res.json({ hasUpdate: false });
     }
 
-    const hasUpdateQ = await pool.query(
-      `
-      select exists(
-        select 1 from check_audits
-        where check_id = $1 and upper(action) = 'UPDATE'
-      ) as has_update
-      `,
-      [checkId]
-    );
+    const original = rows[0]?.snapshot ?? null;
+    const modified = rows[rows.length - 1]?.snapshot ?? null;
 
-    const hasUpdate = hasUpdateQ.rows[0].has_update === true;
-    if (!hasUpdate) {
+    // s'il n'y a jamais eu d'update, on ne montre rien
+    const hasUpdate = rows.some(r => r.action === 'UPDATE');
+
+    if (!hasUpdate || !original || !modified) {
       return res.json({ hasUpdate: false });
     }
 
-    const origSnap = origQ.rows[0].snapshot || {};
-    const modSnap = modQ.rows[0].snapshot || {};
-
-    const original = {
-      result: origSnap?.check?.result ?? null,
-      items: Array.isArray(origSnap?.items) ? origSnap.items : [],
-    };
-
-    const modified = {
-      result: modSnap?.check?.result ?? null,
-      items: Array.isArray(modSnap?.items) ? modSnap.items : [],
-    };
-
-    return res.json({ hasUpdate: true, original, modified });
+    return res.json({
+      hasUpdate: true,
+      original,
+      modified,
+    });
   } catch (e) {
     next(e);
   }

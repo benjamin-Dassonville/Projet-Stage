@@ -13,6 +13,11 @@
             "approve": true,
             "matchCommandLine": true
         },
-        "npm run lint": true
+        "npm run lint": true,
+        "/^cd /Applications/XAMPP/xamppfiles/htdocs/flutter/projet_stage/api && node --check src/routes/calendar\\.js$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "timeout": true
     }
 }

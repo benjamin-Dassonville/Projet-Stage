@@ -135,7 +135,13 @@ router.get("/workers/:workerId", requireRoleManager, async (req, res, next) => {
         role,
         result,
         created_at as "createdAt",
-        check_day as "checkDay"
+        check_day as "checkDay",
+        exists (
+          select 1
+          from check_audits ca
+          where ca.check_id = checks.id
+            and ca.action = 'UPDATE'
+        ) as "isModified"
       from checks
       where worker_id = $1 and check_day = $2::date
       limit 1
