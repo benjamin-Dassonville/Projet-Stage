@@ -16,17 +16,14 @@ class _DashboardPageState extends State<DashboardPage> {
   bool loading = true;
   String? error;
 
-  // data dashboard
   Map<String, dynamic>? kpi;
   List koWorkers = [];
 
-  // meta
   bool loadingMeta = true;
   List<Map<String, dynamic>> chefs = [];
   List<Map<String, dynamic>> teams = [];
 
-  // filtres
-  String range = 'today'; // today | 7d | 30d | 365d
+  String range = 'today';
   String? selectedChefId;
   String? selectedTeamId;
 
@@ -48,15 +45,13 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String teamName(String? teamId) {
     if (teamId == null) return '—';
-    final t = teams.cast<Map<String, dynamic>>().where((x) => '${x['id']}' == teamId);
+    final t = teams.where((x) => '${x['id']}' == teamId);
     if (t.isEmpty) return teamId;
     return '${t.first['name']}';
   }
 
   Future<void> loadMeta() async {
-    setState(() {
-      loadingMeta = true;
-    });
+    setState(() => loadingMeta = true);
 
     try {
       final api = ApiClient();
@@ -68,10 +63,8 @@ class _DashboardPageState extends State<DashboardPage> {
         teams = (resTeams.data as List).cast<Map<String, dynamic>>();
         loadingMeta = false;
       });
-    } catch (e) {
-      setState(() {
-        loadingMeta = false;
-      });
+    } catch (_) {
+      setState(() => loadingMeta = false);
     }
   }
 
@@ -153,7 +146,6 @@ class _DashboardPageState extends State<DashboardPage> {
     return 2.2;
   }
 
-  // ---------- Charts helpers ----------
   Widget _pieStatus({
     required int ok,
     required int ko,
@@ -161,12 +153,8 @@ class _DashboardPageState extends State<DashboardPage> {
     required int absents,
   }) {
     final total = ok + ko + nonControles + absents;
-    if (total == 0) {
-      return const Text('Aucune donnée.');
-    }
+    if (total == 0) return const Text('Aucune donnée.');
 
-    // On laisse fl_chart gérer les couleurs par défaut du thème (pas de couleurs hardcodées)
-    // MAIS fl_chart nécessite une couleur. On utilise les couleurs du theme pour rester cohérent.
     final theme = Theme.of(context);
     final cOk = theme.colorScheme.primary;
     final cKo = theme.colorScheme.error;
@@ -180,30 +168,10 @@ class _DashboardPageState extends State<DashboardPage> {
           sectionsSpace: 2,
           centerSpaceRadius: 34,
           sections: [
-            PieChartSectionData(
-              value: ok.toDouble(),
-              title: 'OK',
-              radius: 62,
-              color: cOk,
-            ),
-            PieChartSectionData(
-              value: ko.toDouble(),
-              title: 'KO',
-              radius: 62,
-              color: cKo,
-            ),
-            PieChartSectionData(
-              value: nonControles.toDouble(),
-              title: 'NC',
-              radius: 62,
-              color: cNc,
-            ),
-            PieChartSectionData(
-              value: absents.toDouble(),
-              title: 'ABS',
-              radius: 62,
-              color: cAbs,
-            ),
+            PieChartSectionData(value: ok.toDouble(), title: 'OK', radius: 62, color: cOk),
+            PieChartSectionData(value: ko.toDouble(), title: 'KO', radius: 62, color: cKo),
+            PieChartSectionData(value: nonControles.toDouble(), title: 'NC', radius: 62, color: cNc),
+            PieChartSectionData(value: absents.toDouble(), title: 'ABS', radius: 62, color: cAbs),
           ],
         ),
       ),
@@ -271,6 +239,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -281,8 +250,17 @@ class _DashboardPageState extends State<DashboardPage> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => _back(context),
+            style: IconButton.styleFrom(foregroundColor: Colors.black),
           ),
           title: const Text('Dashboard'),
+          actions: [
+            IconButton(
+              tooltip: 'Calendrier',
+              onPressed: () => context.push('/calendar'),
+              icon: const Icon(Icons.calendar_month),
+              style: IconButton.styleFrom(foregroundColor: Colors.black),
+            ),
+          ],
         ),
         body: Padding(
           padding: const EdgeInsets.all(16),
@@ -322,9 +300,20 @@ class _DashboardPageState extends State<DashboardPage> {
         title: const Text('Dashboard'),
         actions: [
           IconButton(
+            tooltip: 'Calendrier',
+            onPressed: () => context.push('/calendar'),
+            icon: const Icon(Icons.calendar_month),
+            style: IconButton.styleFrom(
+              foregroundColor: Colors.black, // Test avec couleur fixe
+            ),
+          ),
+          IconButton(
             onPressed: loadDashboard,
             icon: const Icon(Icons.refresh),
             tooltip: 'Rafraîchir',
+            style: IconButton.styleFrom(
+              foregroundColor: Colors.black, // Test avec couleur fixe
+            ),
           ),
         ],
       ),
@@ -338,17 +327,13 @@ class _DashboardPageState extends State<DashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Filtres
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          'Filtres',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        const Text('Filtres', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
                           initialValue: range,
@@ -379,10 +364,7 @@ class _DashboardPageState extends State<DashboardPage> {
                               border: OutlineInputBorder(),
                             ),
                             items: [
-                              const DropdownMenuItem<String?>(
-                                value: null,
-                                child: Text('Tous'),
-                              ),
+                              const DropdownMenuItem<String?>(value: null, child: Text('Tous')),
                               ...chefs.map(
                                 (c) => DropdownMenuItem<String?>(
                                   value: c['id'] as String,
@@ -407,10 +389,7 @@ class _DashboardPageState extends State<DashboardPage> {
                               border: OutlineInputBorder(),
                             ),
                             items: [
-                              const DropdownMenuItem<String?>(
-                                value: null,
-                                child: Text('Toutes'),
-                              ),
+                              const DropdownMenuItem<String?>(value: null, child: Text('Toutes')),
                               ...teams.map(
                                 (t) => DropdownMenuItem<String?>(
                                   value: t['id'] as String,
@@ -439,7 +418,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 const SizedBox(height: 16),
 
-                // KPI
                 GridView.count(
                   crossAxisCount: cols,
                   shrinkWrap: true,
@@ -459,24 +437,15 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 const SizedBox(height: 16),
 
-                // Graphiques
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          'Répartition statuts',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        const Text('Répartition statuts', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
-                        _pieStatus(
-                          ok: ok,
-                          ko: ko,
-                          nonControles: nonControles,
-                          absents: absents,
-                        ),
+                        _pieStatus(ok: ok, ko: ko, nonControles: nonControles, absents: absents),
                         const SizedBox(height: 12),
                         Wrap(
                           spacing: 10,
@@ -501,10 +470,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          'OK vs KO',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        const Text('OK vs KO', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
                         _barOkKo(ok: ok, ko: ko),
                       ],
@@ -514,17 +480,14 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 const SizedBox(height: 16),
 
-                // Progress conformité
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          'Taux de conformité (sur les présents)',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        const Text('Taux de conformité (sur les présents)',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
                         LinearProgressIndicator(value: ratio.toDouble()),
                         const SizedBox(height: 8),
@@ -536,10 +499,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 const SizedBox(height: 16),
 
-                const Text(
-                  'Personnes KO',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+                const Text('Personnes KO', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
 
                 if (koWorkers.isEmpty)

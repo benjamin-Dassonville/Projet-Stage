@@ -202,7 +202,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                         const SizedBox(height: 10),
 
                         DropdownButtonFormField<String?>(
-                          value: selectedRoleId,
+                          initialValue: selectedRoleId,
                           items: [
                             const DropdownMenuItem<String?>(
                               value: null,
@@ -236,7 +236,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                           child: Opacity(
                             opacity: dontAssign ? 0.5 : 1,
                             child: DropdownButtonFormField<String>(
-                              value: selectedTeamId,
+                              initialValue: selectedTeamId,
                               items: teams
                                   .where((t) => (t['id'] ?? '').toString().isNotEmpty)
                                   .map((t) {
@@ -370,7 +370,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
                             child: Opacity(
                               opacity: dontAssign ? 0.5 : 1,
                               child: DropdownButtonFormField<String>(
-                                value: selectedTeamId,
+                                initialValue: selectedTeamId,
                                 items: teams
                                     .where((t) => (t['id'] ?? '').toString().isNotEmpty)
                                     .map((t) {
@@ -392,7 +392,7 @@ class _ControlTeamPageState extends State<ControlTeamPage> {
 
                           const SizedBox(height: 12),
                           DropdownButtonFormField<String?>(
-                            value: selectedRoleId,
+                            initialValue: selectedRoleId,
                             items: [
                               const DropdownMenuItem<String?>(
                                 value: null,

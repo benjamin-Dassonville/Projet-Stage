@@ -168,6 +168,12 @@ router.get("/:workerId/checks", async (req, res) => {
         c.result,
         c.role,
         c.created_at as "createdAt",
+        exists (
+          select 1
+          from check_audits ca
+          where ca.check_id = c.id
+            and ca.action = 'UPDATE'
+        ) as "isModified",
         ci.id as "checkItemId",
         ci.equipment_id as "equipmentId",
         e.name as "equipmentName",
@@ -193,6 +199,7 @@ router.get("/:workerId/checks", async (req, res) => {
           result: r.result,
           role: r.role ?? null,
           createdAt: r.createdAt,
+          isModified: r.isModified === true,
           items: [],
         });
       }

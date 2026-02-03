@@ -123,6 +123,7 @@ router.get("/summary", async (req, res) => {
     const lastChecksRes = await pool.query(
       `
       select distinct on (c.worker_id)
+        c.id as "checkId",
         c.worker_id as "workerId",
         c.result,
         c.created_at as "createdAt"
@@ -135,6 +136,23 @@ router.get("/summary", async (req, res) => {
     );
     const lastChecks = lastChecksRes.rows;
 
+    // --- checks modifiés ? (au moins 1 UPDATE dans check_audits) ---
+    const checkIds = lastChecks.map((c) => c.checkId).filter(Boolean);
+
+    let modifiedSet = new Set();
+    if (checkIds.length > 0) {
+      const modRes = await pool.query(
+        `
+        select distinct check_id
+        from check_audits
+        where check_id = any($1)
+          and upper(action) = 'UPDATE'
+        `,
+        [checkIds]
+      );
+      modifiedSet = new Set(modRes.rows.map((r) => String(r.check_id)));
+    }
+
     const periodControlled = lastChecks.length;
     const periodOk = lastChecks.filter((c) => c.result === "CONFORME").length;
     const periodKo = lastChecks.filter((c) => c.result === "NON_CONFORME")
@@ -145,15 +163,27 @@ router.get("/summary", async (req, res) => {
       (w) => w.attendance === "PRESENT" && !checkedSet.has(w.id)
     ).length;
 
-    // koWorkers period
-    const koIds = new Set(
-      lastChecks
-        .filter((c) => c.result === "NON_CONFORME")
-        .map((c) => c.workerId)
-    );
+    // koWorkers period + infos modification
+    const koChecks = lastChecks.filter((c) => c.result === "NON_CONFORME");
+    const koIds = new Set(koChecks.map((c) => c.workerId));
+
+    const koByWorker = new Map(koChecks.map((c) => [c.workerId, c]));
+
     const koWorkers = workers
       .filter((w) => koIds.has(w.id))
-      .map((w) => ({ id: w.id, name: w.name, teamId: w.teamId }));
+      .map((w) => {
+        const lc = koByWorker.get(w.id);
+        const checkId = lc ? String(lc.checkId) : null;
+        const isModified = checkId ? modifiedSet.has(checkId) : false;
+
+        return {
+          id: w.id,
+          name: w.name,
+          teamId: w.teamId,
+          checkId,
+          isModified,
+        };
+      });
 
     return res.json({
       range,

@@ -1,5 +1,3 @@
-import 'dart:collection';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -141,6 +139,12 @@ class _TeamPageState extends State<TeamPage> {
     );
   }
 
+  int _parseInt(dynamic v, {int fallback = 0}) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse('${v ?? fallback}') ?? fallback;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
@@ -215,10 +219,8 @@ class _TeamPageState extends State<TeamPage> {
           final attendance = (w['attendance'] ?? 'PRESENT') as String;
           final isAbsent = attendance == 'ABS';
 
-          // ✅ data API : hasAlert + alertsCount
-          final alertsCount = (w['alertsCount'] ?? 0) is int
-              ? (w['alertsCount'] ?? 0) as int
-              : int.tryParse((w['alertsCount'] ?? '0').toString()) ?? 0;
+          // ✅ API: alertsCount (int ou string)
+          final alertsCount = _parseInt(w['alertsCount'], fallback: 0);
 
           // On garde le bouton "présence" actif même si ABS,
           // mais on rend tout le reste "inactif" visuellement.
@@ -279,7 +281,7 @@ class _TeamPageState extends State<TeamPage> {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // On affiche l'alerte même si absent ? moi je dis oui (info utile).
+                  // On affiche l'alerte même si absent (info utile).
                   _alertBang(alertsCount: alertsCount),
                   if (alertsCount > 0) const SizedBox(width: 8),
                   _attendanceBadge(isAbsent: isAbsent, status: status),

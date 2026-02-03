@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+
 import '../api/api_client.dart';
 
 class WorkerCheckPage extends StatefulWidget {
@@ -20,16 +21,43 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
   List equipment = [];
   final Map<String, String> statusByEquipId = {};
 
+  // --- Mode jour ---
+  bool loadingToday = true;
+  String? todayError;
+  String? todayDateIso; // YYYY-MM-DD
+  Map<String, dynamic>? todayCheck; // null si pas de check aujourd’hui
+  List todayItems = [];
+
   // --- Historique ---
   bool loadingHistory = true;
-  String historyRange = '7d'; // today | 7d | 30d | 365d
+  String historyRange = '7d';
   List historyChecks = [];
   String? historyError;
 
-  // --- Alertes (seuil dépassé) ---
+  // --- Alertes ---
   bool loadingAlerts = true;
   List alerts = [];
   String? alertsError;
+
+  bool loadingAuditDiff = false;
+  bool hasAuditUpdate = false;
+
+  String? auditOriginalResult;
+  String? auditModifiedResult;
+
+  // equipmentId -> {old, new}
+  final Map<String, Map<String, String>> changedItemsDiff = {};
+
+  // --- Comparaison (Original vs Modifié) ---
+  final Map<String, String> originalStatusByEquipId = {};
+  String? originalResult;
+
+  String _two(int n) => n.toString().padLeft(2, '0');
+
+  String _todayIso() {
+    final now = DateTime.now();
+    return '${now.year}-${_two(now.month)}-${_two(now.day)}';
+  }
 
   String labelForStatus(String s) {
     switch (s) {
@@ -61,8 +89,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
     if (iso == null || iso.isEmpty) return '-';
     try {
       final dt = DateTime.parse(iso).toLocal();
-      String two(int n) => n.toString().padLeft(2, '0');
-      return '${two(dt.day)}/${two(dt.month)}/${dt.year} ${two(dt.hour)}:${two(dt.minute)}';
+      return '${_two(dt.day)}/${_two(dt.month)}/${dt.year} ${_two(dt.hour)}:${_two(dt.minute)}';
     } catch (_) {
       return iso;
     }
@@ -71,9 +98,16 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
   @override
   void initState() {
     super.initState();
-    loadRequiredEquipment();
-    loadHistory();
-    loadAlerts();
+    todayDateIso = _todayIso();
+    _boot();
+  }
+
+  Future<void> _boot() async {
+    await loadRequiredEquipment();
+    await loadTodayCheck(); // après avoir l’équipement => pré-remplissage possible
+    await loadAuditDiffIfAny();
+    await loadHistory();
+    await loadAlerts();
   }
 
   Future<void> loadRequiredEquipment() async {
@@ -90,6 +124,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
       final newRole = (res.data['role'] ?? '').toString();
       final newEquipment = (res.data['equipment'] as List?) ?? [];
 
+      // init statuts par défaut
       statusByEquipId.clear();
       for (final e in newEquipment) {
         final id = (e['id'] ?? '').toString();
@@ -111,6 +146,64 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
     }
   }
 
+  /// GET /calendar/workers/:workerId?date=YYYY-MM-DD
+  Future<void> loadTodayCheck() async {
+    final date = todayDateIso;
+    if (date == null || date.isEmpty) return;
+
+    setState(() {
+      loadingToday = true;
+      todayError = null;
+    });
+
+    try {
+      final api = ApiClient();
+      final res = await api.dio.get(
+        '/calendar/workers/${widget.workerId}',
+        queryParameters: {'date': date},
+      );
+
+      final m = (res.data as Map).cast<String, dynamic>();
+      final c = (m['check'] as Map?)?.cast<String, dynamic>();
+      final its = (m['items'] as List?) ?? [];
+
+      // Reset snapshot original
+      originalStatusByEquipId.clear();
+      originalResult = c?['result']?.toString();
+
+      // si check existe => pré-remplir les statuts
+      if (c != null && its.isNotEmpty) {
+        for (final it in its) {
+          final mm = (it as Map).cast<String, dynamic>();
+          final eqId = (mm['equipmentId'] ?? '').toString();
+          final st = (mm['status'] ?? 'OK').toString();
+
+          if (eqId.isNotEmpty) {
+            // ✅ snapshot original
+            originalStatusByEquipId[eqId] = st;
+
+            // ✅ valeur courante affichée/éditable (pré-remplissage)
+            if (statusByEquipId.containsKey(eqId)) {
+              statusByEquipId[eqId] = st;
+            }
+          }
+        }
+      }
+
+      setState(() {
+        todayCheck = c;
+        todayItems = its;
+        loadingToday = false;
+      });
+    } catch (e) {
+      setState(() {
+        todayError = e.toString();
+        loadingToday = false;
+      });
+    }
+  }
+
+  /// GET /workers/:workerId/checks?range=today|7d|30d|365d
   Future<void> loadHistory() async {
     setState(() {
       loadingHistory = true;
@@ -136,6 +229,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
     }
   }
 
+  /// GET /workers/:workerId/alerts
   Future<void> loadAlerts() async {
     setState(() {
       loadingAlerts = true;
@@ -194,65 +288,8 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
     }
   }
 
-  bool get isCompliant {
-    return !statusByEquipId.values.any((s) => s == 'MANQUANT' || s == 'KO');
-  }
-
-  Future<void> submitCheck() async {
-    setState(() => submitting = true);
-
-    try {
-      final api = ApiClient();
-
-      if (teamId.isEmpty) {
-        throw Exception('teamId manquant: vérifie /required-equipment');
-      }
-
-      final items = equipment.map((e) {
-        final id = (e['id'] ?? '').toString();
-        return {'equipmentId': id, 'status': statusByEquipId[id] ?? 'OK'};
-      }).toList();
-
-      final payload = {
-        'workerId': widget.workerId,
-        'teamId': teamId,
-        'items': items,
-      };
-
-      await api.dio.post('/checks', data: payload);
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contrôle envoyé ✅')),
-      );
-
-      await loadHistory();
-      await loadAlerts();
-
-      if (!mounted) return;
-      Navigator.of(context).pop(true);
-    } on DioException catch (e) {
-      debugPrint('POST /checks FAILED');
-      debugPrint('status=${e.response?.statusCode}');
-      debugPrint('data=${e.response?.data}');
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Erreur envoi: ${e.response?.statusCode ?? ''} ${e.response?.data ?? e.message}',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur envoi: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => submitting = false);
-    }
-  }
+  bool get isCompliant => !statusByEquipId.values.any((s) => s == 'MANQUANT' || s == 'KO');
+  bool get hasTodayCheck => todayCheck != null;
 
   Color? colorForResult(String r) {
     if (r == 'CONFORME') return Colors.green;
@@ -278,6 +315,20 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
         ),
       ),
     );
+  }
+
+  String computedResultFromSelection() {
+    if (statusByEquipId.values.any((s) => s == 'KO')) return 'KO';
+    if (statusByEquipId.values.any((s) => s == 'MANQUANT')) return 'NON_CONFORME';
+    return 'CONFORME';
+  }
+
+  bool _isEquipChanged(String equipmentId) {
+    if (!hasTodayCheck) return false; // pas d'original si pas de check
+    final orig = originalStatusByEquipId[equipmentId];
+    final cur = statusByEquipId[equipmentId];
+    if (orig == null || cur == null) return false;
+    return orig != cur;
   }
 
   Widget _alertsBanner() {
@@ -319,8 +370,6 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
               ],
             ),
             const SizedBox(height: 10),
-
-            // ✅ Liste alertes + reset par équipement
             ...alerts.map((a) {
               final equipmentId = (a['equipmentId'] ?? '').toString();
               final name = (a['equipmentName'] ?? equipmentId).toString();
@@ -334,19 +383,14 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
                     Expanded(child: Text('• $name — $miss/$max')),
                     const SizedBox(width: 8),
                     OutlinedButton(
-                      onPressed: equipmentId.isEmpty
-                          ? null
-                          : () => resetAlertForEquipment(equipmentId),
+                      onPressed: equipmentId.isEmpty ? null : () => resetAlertForEquipment(equipmentId),
                       child: const Text('Reset'),
                     ),
                   ],
                 ),
               );
             }),
-
             const SizedBox(height: 6),
-
-            // (optionnel) reset global
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
@@ -361,8 +405,302 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
     );
   }
 
+  Widget _cmpHeader({
+    required String dateLabel,
+    required String originalResult,
+    required String modifiedResult,
+  }) {
+    return Row(
+      children: [
+        // date/heure à gauche
+        Expanded(
+          flex: 3,
+          child: Text(
+            dateLabel,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+
+        // titres colonnes au centre
+        Expanded(
+          flex: 4,
+          child: Row(
+            children: const [
+              Expanded(
+                child: Center(
+                  child: Text('Original', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Text('Modifié', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // résultat à droite (on affiche le modifié, et tu peux aussi afficher l’original en plus si tu veux)
+        Expanded(
+          flex: 2,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: resultChip(modifiedResult),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _cmpRow({
+    required String label,
+    required String originalStatus,
+    required String modifiedStatus,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Text(label),
+          ),
+          Expanded(
+            flex: 4,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      labelForStatus(originalStatus),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      labelForStatus(modifiedStatus),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Expanded(flex: 2, child: SizedBox()), // colonne “résultat” vide pour l’alignement
+        ],
+      ),
+    );
+  }
+
+  Widget _changedRow({required String original, required String modified}) {
+    final theme = Theme.of(context);
+    final cOrig = theme.colorScheme.outline;
+    final cMod = theme.colorScheme.primary;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Original: ${labelForStatus(original)}',
+              style: TextStyle(fontWeight: FontWeight.w700, color: cOrig),
+            ),
+          ),
+          const Icon(Icons.arrow_forward, size: 18),
+          Expanded(
+            child: Text(
+              'Modifié: ${labelForStatus(modified)}',
+              textAlign: TextAlign.right,
+              style: TextStyle(fontWeight: FontWeight.w800, color: cMod),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniTag(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.grey),
+        color: Colors.grey.withOpacity(0.06),
+      ),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+      ),
+    );
+  }
+
+  Future<void> _submitOrEdit() async {
+    setState(() => submitting = true);
+
+    try {
+      final api = ApiClient();
+
+      if (teamId.isEmpty) {
+        throw Exception('teamId manquant: vérifie /required-equipment');
+      }
+
+      final items = equipment.map((e) {
+        final id = (e['id'] ?? '').toString();
+        return {'equipmentId': id, 'status': statusByEquipId[id] ?? 'OK'};
+      }).toList();
+
+      // ✅ création
+      if (!hasTodayCheck) {
+        final payload = {
+          'workerId': widget.workerId,
+          'teamId': teamId,
+          'items': items,
+        };
+
+        await api.dio.post('/checks', data: payload);
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Contrôle envoyé ✅')),
+        );
+
+        await loadTodayCheck();
+        await loadHistory();
+        await loadAlerts();
+
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
+        return;
+      }
+
+      // ✅ modification
+      final checkId = (todayCheck?['id'] ?? '').toString();
+      if (checkId.isEmpty) {
+        throw Exception("Check du jour invalide: id manquant.");
+      }
+
+      await api.dio.patch('/checks/$checkId', data: {'items': items});
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contrôle modifié ✅')),
+      );
+
+      await loadTodayCheck();
+      await loadHistory();
+      await loadAlerts();
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+
+      // si POST alors que déjà existant
+      if (status == 409) {
+        await loadTodayCheck();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Déjà contrôlé aujourd’hui → passe en mode modification.")),
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Erreur: ${e.response?.statusCode ?? ''} ${e.response?.data ?? e.message}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+
+  Future<void> loadAuditDiffIfAny() async {
+    if (!hasTodayCheck) return;
+
+    final checkId = (todayCheck?['id'] ?? '').toString();
+    if (checkId.isEmpty) return;
+
+    setState(() {
+      loadingAuditDiff = true;
+      hasAuditUpdate = false;
+      changedItemsDiff.clear();
+      auditOriginalResult = null;
+      auditModifiedResult = null;
+    });
+
+    try {
+      final api = ApiClient();
+      final res = await api.dio.get('/check-audits/$checkId/diff');
+      final m = (res.data as Map).cast<String, dynamic>();
+
+      final hasUpdate = (m['hasUpdate'] == true);
+      if (!hasUpdate) {
+        setState(() {
+          loadingAuditDiff = false;
+          hasAuditUpdate = false;
+        });
+        return;
+      }
+
+      final original = (m['original'] as Map?)?.cast<String, dynamic>() ?? {};
+      final modified = (m['modified'] as Map?)?.cast<String, dynamic>() ?? {};
+
+      auditOriginalResult = (original['result'] ?? '').toString();
+      auditModifiedResult = (modified['result'] ?? '').toString();
+
+      final origItems = (original['items'] as List?) ?? [];
+      final modItems = (modified['items'] as List?) ?? [];
+
+      // map eqId -> status
+      final Map<String, String> origByEq = {
+        for (final it in origItems)
+          ((it as Map)['equipmentId'] ?? '').toString(): ((it)['status'] ?? 'OK').toString()
+      };
+      final Map<String, String> modByEq = {
+        for (final it in modItems)
+          ((it as Map)['equipmentId'] ?? '').toString(): ((it)['status'] ?? 'OK').toString()
+      };
+
+      // diff uniquement sur ceux qui ont changé
+      final allEq = <String>{...origByEq.keys, ...modByEq.keys};
+      for (final eqId in allEq) {
+        final o = origByEq[eqId];
+        final n = modByEq[eqId];
+        if (o != null && n != null && o != n) {
+          changedItemsDiff[eqId] = {'old': o, 'new': n};
+        }
+      }
+
+      setState(() {
+        hasAuditUpdate = true;
+        loadingAuditDiff = false;
+      });
+    } catch (_) {
+      // si erreur, on n’affiche rien (pas de faux positifs)
+      setState(() {
+        loadingAuditDiff = false;
+        hasAuditUpdate = false;
+        changedItemsDiff.clear();
+        auditOriginalResult = null;
+        auditModifiedResult = null;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    
     if (loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -379,6 +717,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
 
     final isNarrow = MediaQuery.of(context).size.width < 420;
     final missingLabel = isNarrow ? 'Manq.' : 'Manquant';
+    final buttonLabel = hasTodayCheck ? 'Modifier le contrôle' : 'Valider le contrôle';
 
     return Scaffold(
       appBar: AppBar(
@@ -388,6 +727,8 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
             tooltip: 'Rafraîchir',
             onPressed: () async {
               await loadRequiredEquipment();
+              await loadTodayCheck();
+              await loadAuditDiffIfAny();
               await loadHistory();
               await loadAlerts();
             },
@@ -401,6 +742,46 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
           _alertsBanner(),
           if (!loadingAlerts && alerts.isNotEmpty) const SizedBox(height: 12),
 
+          // Infos du jour
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Aujourd’hui (${todayDateIso ?? "-"})',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  if (loadingToday)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else if (todayError != null)
+                    const Icon(Icons.error_outline, color: Colors.red)
+                  else if (hasTodayCheck)
+                    resultChip((todayCheck?['result'] ?? '').toString())
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.grey),
+                      ),
+                      child: const Text(
+                        'Pas de check',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
           Text('Worker ID: ${widget.workerId}'),
           const SizedBox(height: 8),
           Text('Rôle mission : $role'),
@@ -412,6 +793,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
               color: isCompliant ? Colors.green : Colors.red,
             ),
           ),
+
           const SizedBox(height: 16),
           const Text('Équipements requis :'),
           const SizedBox(height: 8),
@@ -420,46 +802,80 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
             final id = (e['id'] ?? '').toString();
             final current = statusByEquipId[id] ?? 'OK';
 
+            final changed = _isEquipChanged(id);
+            final orig = originalStatusByEquipId[id] ?? current;
+            final diff = changedItemsDiff[id]; // null si pas modifié
+
             return Card(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: ListTile(
-                  title: Text((e['name'] ?? '').toString()),
-                  subtitle: Text('Statut: ${labelForStatus(current)}'),
-                  trailing: SizedBox(
-                    width: isNarrow ? 220 : 280,
-                    child: SegmentedButton<String>(
-                      style: const ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: ListTile(
+                      title: Text((e['name'] ?? '').toString()),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Statut: ${labelForStatus(current)}'),
+
+                          // ✅ Affiché seulement si ce contrôle a été modifié ET si cet équipement a changé
+                          if (hasAuditUpdate && diff != null) ...[
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 6,
+                              children: [
+                                _miniTag('Original', labelForStatus(diff['old']!)),
+                                _miniTag('Modifié', labelForStatus(diff['new']!)),
+                              ],
+                            ),
+                          ],
+                        ],
                       ),
-                      segments: <ButtonSegment<String>>[
-                        const ButtonSegment(value: 'OK', label: Text('OK')),
-                        ButtonSegment(value: 'MANQUANT', label: Text(missingLabel)),
-                        const ButtonSegment(value: 'KO', label: Text('KO')),
-                      ],
-                      selected: <String>{current},
-                      onSelectionChanged: (newSelection) {
-                        final v = newSelection.first;
-                        setState(() => statusByEquipId[id] = v);
-                      },
+                      trailing: SizedBox(
+                        width: isNarrow ? 220 : 280,
+                        child: SegmentedButton<String>(
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          segments: <ButtonSegment<String>>[
+                            const ButtonSegment(value: 'OK', label: Text('OK')),
+                            ButtonSegment(value: 'MANQUANT', label: Text(missingLabel)),
+                            const ButtonSegment(value: 'KO', label: Text('KO')),
+                          ],
+                          selected: <String>{current},
+                          onSelectionChanged: (newSelection) {
+                            final v = newSelection.first;
+                            setState(() => statusByEquipId[id] = v);
+                          },
+                        ),
+                      ),
                     ),
                   ),
-                ),
+
+                  // ✅ Affiché uniquement si changement
+                  if (changed) ...[
+                    const Divider(height: 1),
+                    _changedRow(original: orig, modified: current),
+                  ],
+                ],
               ),
             );
           }),
 
           const SizedBox(height: 12),
           ElevatedButton(
-            onPressed: submitting ? null : submitCheck,
-            child: Text(submitting ? 'Envoi...' : 'Valider le contrôle'),
+            onPressed: submitting ? null : _submitOrEdit,
+            child: Text(submitting ? 'Envoi...' : buttonLabel),
           ),
 
           const SizedBox(height: 20),
           const Divider(),
           const SizedBox(height: 8),
 
+          // Historique
           Row(
             children: [
               const Expanded(
@@ -471,7 +887,7 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
               SizedBox(
                 width: 140,
                 child: DropdownButtonFormField<String>(
-                  value: historyRange,
+                  initialValue: historyRange,
                   decoration: const InputDecoration(
                     isDense: true,
                     border: OutlineInputBorder(),
@@ -505,49 +921,107 @@ class _WorkerCheckPageState extends State<WorkerCheckPage> {
               final result = (c['result'] ?? '').toString();
               final createdAt = c['createdAt'] as String?;
               final items = (c['items'] as List?) ?? [];
+              final checkId = (c['id'] ?? '').toString();
+              final isModified = (c['isModified'] == true);
 
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              prettyDate(createdAt),
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
+              return InkWell(
+                onTap: !isModified ? null : () async {
+                  try {
+                    final api = ApiClient();
+                    final res = await api.dio.get('/check-audits/$checkId');
+                    final audits = (res.data as List?) ?? [];
+
+                    if (!mounted) return;
+
+                    showDialog(
+                      context: context, // ignore: use_build_context_synchronously
+                      builder: (_) => AlertDialog(
+                        title: const Text('Historique des modifications'),
+                        content: SizedBox(
+                          width: 520,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: audits.length,
+                            itemBuilder: (_, i) {
+                              final a = (audits[i] as Map).cast<String, dynamic>();
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: Text(
+                                  'rev ${a['revision']} • ${a['action']} • ${a['changed_at']}\nby: ${a['changed_by']}',
+                                ),
+                              );
+                            },
                           ),
-                          resultChip(result),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      if (items.isEmpty)
-                        const Text(
-                          'Aucun item (ou items non enregistrés).',
-                          style: TextStyle(fontSize: 12),
-                        )
-                      else
-                        ...items.map((it) {
-                          final name = (it['equipmentName'] ?? it['equipmentId'] ?? '-') as String;
-                          final st = (it['status'] ?? '-') as String;
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Row(
-                              children: [
-                                Expanded(child: Text(name)),
-                                Text(
-                                  labelForStatus(st),
-                                  style: const TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                              ],
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Erreur historique: $e')),
+                    );
+                  }
+                },
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                prettyDate(createdAt),
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
                             ),
-                          );
-                        }),
-                    ],
+                            if (isModified)
+                              Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: Colors.orange),
+                                  color: Colors.orange.withOpacity(0.10),
+                                ),
+                                child: const Text(
+                                  'MODIF',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                            resultChip(result),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        if (items.isEmpty)
+                          const Text(
+                            'Aucun item (ou items non enregistrés).',
+                            style: TextStyle(fontSize: 12),
+                          )
+                        else
+                          ...items.map((it) {
+                            final name = (it['equipmentName'] ?? it['equipmentId'] ?? '-') as String;
+                            final st = (it['status'] ?? '-') as String;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text(name)),
+                                  Text(
+                                    labelForStatus(st),
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                      ],
+                    ),
                   ),
                 ),
               );

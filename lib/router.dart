@@ -10,10 +10,13 @@ import 'pages/worker_check_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/forbidden_page.dart';
 
-import 'pages/team_control_page.dart';     // liste des équipes
-import 'pages/control_team_page.dart';     // détail équipe (gestion workers)
+import 'pages/team_control_page.dart';
+import 'pages/control_team_page.dart';
 
-// ✅ nouvelle page rôles/équipements
+import 'pages/calendar_page.dart';
+import 'pages/calendar_team_page.dart';
+import 'pages/calendar_worker_check_page.dart';
+
 import 'pages/roles_manager_page.dart';
 
 bool _isAllowed(AppRole? role, Set<AppRole> allowed) {
@@ -21,9 +24,6 @@ bool _isAllowed(AppRole? role, Set<AppRole> allowed) {
   return allowed.contains(role);
 }
 
-/// Guard générique :
-/// - si pas connecté -> /login
-/// - si rôle interdit -> /forbidden?from=...
 String? _guard(AuthState auth, GoRouterState state, Set<AppRole> allowed) {
   final role = auth.role;
 
@@ -58,14 +58,12 @@ GoRouter createRouter(AuthState auth) {
         },
       ),
 
-      // HOME : n'importe quel rôle connecté
       GoRoute(
         path: '/',
         redirect: (_, __) => auth.role == null ? '/login' : null,
         builder: (_, __) => const HomePage(),
       ),
 
-      // ✅ Teams (contrôle EPI/abs) : UNIQUEMENT CHEF
       GoRoute(
         path: '/teams/:teamId',
         redirect: (context, state) => _guard(auth, state, {AppRole.chef}),
@@ -75,7 +73,6 @@ GoRouter createRouter(AuthState auth) {
         },
       ),
 
-      // Worker check : chef + admin (tu peux resserrer si besoin)
       GoRoute(
         path: '/workers/:workerId/check',
         redirect: (context, state) => _guard(
@@ -89,14 +86,51 @@ GoRouter createRouter(AuthState auth) {
         },
       ),
 
-      // ✅ Dashboard : UNIQUEMENT ADMIN
       GoRoute(
         path: '/dashboard',
         redirect: (context, state) => _guard(auth, state, {AppRole.admin}),
         builder: (_, __) => const DashboardPage(),
       ),
 
-      // ✅ Rôles & équipements : ADMIN + CHEF + DIRECTION
+      // ✅ Calendrier contrôles : ADMIN + CHEF + DIRECTION
+      GoRoute(
+        path: '/calendar',
+        redirect: (context, state) => _guard(
+          auth,
+          state,
+          {AppRole.admin, AppRole.chef, AppRole.direction},
+        ),
+        builder: (_, __) => const CalendarPage(),
+      ),
+
+      GoRoute(
+        path: '/calendar/teams/:teamId',
+        redirect: (context, state) => _guard(
+          auth,
+          state,
+          {AppRole.admin, AppRole.chef, AppRole.direction},
+        ),
+        builder: (_, state) {
+          final teamId = state.pathParameters['teamId']!;
+          final date = state.uri.queryParameters['date']; // YYYY-MM-DD
+          return CalendarTeamPage(teamId: teamId, date: date);
+        },
+      ),
+
+      GoRoute(
+        path: '/calendar/workers/:workerId',
+        redirect: (context, state) => _guard(
+          auth,
+          state,
+          {AppRole.admin, AppRole.chef, AppRole.direction},
+        ),
+        builder: (_, state) {
+          final workerId = state.pathParameters['workerId']!;
+          final date = state.uri.queryParameters['date']; // YYYY-MM-DD
+          return CalendarWorkerCheckPage(workerId: workerId, date: date);
+        },
+      ),
+
       GoRoute(
         path: '/roles',
         redirect: (context, state) => _guard(
@@ -107,7 +141,6 @@ GoRouter createRouter(AuthState auth) {
         builder: (_, __) => const RolesManagerPage(),
       ),
 
-      // ✅ Contrôle équipes (LISTE) : CHEF + ADMIN + DIRECTION
       GoRoute(
         path: '/control-teams',
         redirect: (context, state) => _guard(
@@ -118,7 +151,6 @@ GoRouter createRouter(AuthState auth) {
         builder: (_, __) => const TeamControlPage(),
       ),
 
-      // ✅ Contrôle équipe (DÉTAIL) : CHEF + ADMIN + DIRECTION
       GoRoute(
         path: '/control-teams/:teamId',
         redirect: (context, state) => _guard(
@@ -135,5 +167,4 @@ GoRouter createRouter(AuthState auth) {
   );
 }
 
-/// IMPORTANT: ton main.dart appelle `buildRouter(auth)`.
 GoRouter buildRouter(AuthState auth) => createRouter(auth);

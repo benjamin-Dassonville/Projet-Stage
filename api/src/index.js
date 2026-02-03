@@ -13,7 +13,8 @@ import rolesRoutes from "./routes/roles.js";
 import equipmentRoutes from "./routes/equipment.js";
 import { requireAuth } from "./middleware/auth.js";
 import missesRoutes from "./routes/misses.js";
-
+import calendarRouter from "./routes/calendar.js";
+import checkAuditsRouter from "./routes/check_audits.js";
 
 const app = express();
 
@@ -40,6 +41,9 @@ app.use("/chefs", chefsRouter);
 app.use("/health", healthRoutes);
 
 app.use("/misses", requireAuth, missesRoutes);
+app.use("/calendar", requireAuth, calendarRouter);
+app.use("/check-audits", checkAuditsRouter);
+
 
 const port = process.env.PORT || 3000;
 
@@ -55,4 +59,6 @@ app.use((err, req, res, next) => {
 });
 
 // ✅ Écoute sur le réseau (important pour téléphone)
-app.listen(port, "0.0.0.0", () => console.log(`API running on :${port}`));
+app.listen(port, "0.0.0.0", () => {
+  console.log(`API running on :${port}`);
+});
