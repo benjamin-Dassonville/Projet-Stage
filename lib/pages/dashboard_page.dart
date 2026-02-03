@@ -27,6 +27,9 @@ class _DashboardPageState extends State<DashboardPage> {
   String? selectedChefId;
   String? selectedTeamId;
 
+  bool kpiExpanded = true;
+  bool koExpanded = true;
+
   double safeRatio(num a, num b) => (b == 0) ? 0 : a / b;
 
   @override
@@ -113,19 +116,19 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget kpiCard(String title, dynamic value) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            const SizedBox(height: 4),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
                 '${value ?? '-'}',
-                style: const TextStyle(fontSize: 28),
+                style: const TextStyle(fontSize: 20),
               ),
             ),
           ],
@@ -239,7 +242,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     if (loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -335,76 +337,89 @@ class _DashboardPageState extends State<DashboardPage> {
                       children: [
                         const Text('Filtres', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: range,
-                          decoration: const InputDecoration(
-                            labelText: 'Période',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'today', child: Text("Aujourd'hui")),
-                            DropdownMenuItem(value: '7d', child: Text('7 jours')),
-                            DropdownMenuItem(value: '30d', child: Text('30 jours')),
-                            DropdownMenuItem(value: '365d', child: Text('365 jours')),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            SizedBox(
+                              width: 200,
+                              child: DropdownButtonFormField<String>(
+                                initialValue: range,
+                                decoration: const InputDecoration(
+                                  labelText: 'Période',
+                                  border: OutlineInputBorder(),
+                                ),
+                                items: const [
+                                  DropdownMenuItem(value: 'today', child: Text("Aujourd'hui")),
+                                  DropdownMenuItem(value: '7d', child: Text('7 jours')),
+                                  DropdownMenuItem(value: '30d', child: Text('30 jours')),
+                                  DropdownMenuItem(value: '365d', child: Text('365 jours')),
+                                ],
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  setState(() => range = v);
+                                  loadDashboard();
+                                },
+                              ),
+                            ),
+                            if (loadingMeta)
+                              const Text('Chargement des chefs/équipes...')
+                            else
+                              SizedBox(
+                                width: 250,
+                                child: DropdownButtonFormField<String?>(
+                                  initialValue: selectedChefId,
+                                  decoration: const InputDecoration(
+                                    labelText: "Chef d'équipe (optionnel)",
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem<String?>(value: null, child: Text('Tous')),
+                                    ...chefs.map(
+                                      (c) => DropdownMenuItem<String?>(
+                                        value: c['id'] as String,
+                                        child: Text(c['name'] as String),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (v) {
+                                    setState(() {
+                                      selectedChefId = v;
+                                      if (v != null) selectedTeamId = null;
+                                    });
+                                    loadDashboard();
+                                  },
+                                ),
+                              ),
+                            if (!loadingMeta)
+                              SizedBox(
+                                width: 200,
+                                child: DropdownButtonFormField<String?>(
+                                  initialValue: selectedTeamId,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Équipe (optionnel)',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem<String?>(value: null, child: Text('Toutes')),
+                                    ...teams.map(
+                                      (t) => DropdownMenuItem<String?>(
+                                        value: t['id'] as String,
+                                        child: Text(t['name'] as String),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (v) {
+                                    setState(() {
+                                      selectedTeamId = v;
+                                      if (v != null) selectedChefId = null;
+                                    });
+                                    loadDashboard();
+                                  },
+                                ),
+                              ),
                           ],
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() => range = v);
-                            loadDashboard();
-                          },
                         ),
-                        const SizedBox(height: 12),
-                        if (loadingMeta)
-                          const Text('Chargement des chefs/équipes...')
-                        else
-                          DropdownButtonFormField<String?>(
-                            initialValue: selectedChefId,
-                            decoration: const InputDecoration(
-                              labelText: "Chef d'équipe (optionnel)",
-                              border: OutlineInputBorder(),
-                            ),
-                            items: [
-                              const DropdownMenuItem<String?>(value: null, child: Text('Tous')),
-                              ...chefs.map(
-                                (c) => DropdownMenuItem<String?>(
-                                  value: c['id'] as String,
-                                  child: Text(c['name'] as String),
-                                ),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              setState(() {
-                                selectedChefId = v;
-                                if (v != null) selectedTeamId = null;
-                              });
-                              loadDashboard();
-                            },
-                          ),
-                        const SizedBox(height: 12),
-                        if (!loadingMeta)
-                          DropdownButtonFormField<String?>(
-                            initialValue: selectedTeamId,
-                            decoration: const InputDecoration(
-                              labelText: 'Équipe (optionnel)',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: [
-                              const DropdownMenuItem<String?>(value: null, child: Text('Toutes')),
-                              ...teams.map(
-                                (t) => DropdownMenuItem<String?>(
-                                  value: t['id'] as String,
-                                  child: Text(t['name'] as String),
-                                ),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              setState(() {
-                                selectedTeamId = v;
-                                if (v != null) selectedChefId = null;
-                              });
-                              loadDashboard();
-                            },
-                          ),
                         const SizedBox(height: 12),
                         Text(
                           'Vue: ${rangeLabel(range)}'
@@ -418,20 +433,27 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 const SizedBox(height: 16),
 
-                GridView.count(
-                  crossAxisCount: cols,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: ratioCards,
+                ExpansionTile(
+                  title: const Text('Indicateurs clés', style: TextStyle(fontWeight: FontWeight.bold)),
+                  initiallyExpanded: kpiExpanded,
+                  onExpansionChanged: (expanded) => setState(() => kpiExpanded = expanded),
                   children: [
-                    kpiCard('Total', total),
-                    kpiCard('Présents', presents),
-                    kpiCard('Absents', absents),
-                    kpiCard('Conformes (OK)', ok),
-                    kpiCard('Non conformes (KO)', ko),
-                    kpiCard('Non contrôlés', nonControles),
+                    GridView.count(
+                      crossAxisCount: cols,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: ratioCards,
+                      children: [
+                        kpiCard('Total', total),
+                        kpiCard('Présents', presents),
+                        kpiCard('Absents', absents),
+                        kpiCard('Conformes (OK)', ok),
+                        kpiCard('Non conformes (KO)', ko),
+                        kpiCard('Non contrôlés', nonControles),
+                      ],
+                    ),
                   ],
                 ),
 
@@ -443,36 +465,42 @@ class _DashboardPageState extends State<DashboardPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text('Répartition statuts', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('Graphiques', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
-                        _pieStatus(ok: ok, ko: ko, nonControles: nonControles, absents: absents),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 6,
-                          children: const [
-                            Text('OK'),
-                            Text('KO'),
-                            Text('NC = Non contrôlés'),
-                            Text('ABS'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  const Text('Répartition statuts', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 12),
+                                  _pieStatus(ok: ok, ko: ko, nonControles: nonControles, absents: absents),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 6,
+                                    children: const [
+                                      Text('OK'),
+                                      Text('KO'),
+                                      Text('NC = Non contrôlés'),
+                                      Text('ABS'),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  const Text('OK vs KO', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 12),
+                                  _barOkKo(ok: ok, ko: ko),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text('OK vs KO', style: TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 12),
-                        _barOkKo(ok: ok, ko: ko),
                       ],
                     ),
                   ),
@@ -499,30 +527,34 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 const SizedBox(height: 16),
 
-                const Text('Personnes KO', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-
-                if (koWorkers.isEmpty)
-                  const Text('Aucune personne KO ✅')
-                else
-                  Card(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: koWorkers.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (_, i) {
-                        final w = koWorkers[i];
-                        final tName = teamName('${w['teamId']}');
-                        return ListTile(
-                          title: Text('${w['name']}'),
-                          subtitle: Text('Équipe: $tName'),
-                          trailing: const StatusBadge(status: 'KO'),
-                          onTap: () => context.push('/workers/${w['id']}/check'),
-                        );
-                      },
-                    ),
-                  ),
+                ExpansionTile(
+                  title: const Text('Personnes KO', style: TextStyle(fontWeight: FontWeight.bold)),
+                  initiallyExpanded: koExpanded,
+                  onExpansionChanged: (expanded) => setState(() => koExpanded = expanded),
+                  children: [
+                    if (koWorkers.isEmpty)
+                      const Text('Aucune personne KO ✅')
+                    else
+                      Card(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: koWorkers.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final w = koWorkers[i];
+                            final tName = teamName('${w['teamId']}');
+                            return ListTile(
+                              title: Text('${w['name']}'),
+                              subtitle: Text('Équipe: $tName'),
+                              trailing: const StatusBadge(status: 'KO'),
+                              onTap: () => context.push('/workers/${w['id']}/check'),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           );

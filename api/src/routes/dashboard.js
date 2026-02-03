@@ -45,9 +45,7 @@ router.get("/summary", async (req, res) => {
     if (teamId) {
       teamIds = [teamId];
     } else if (chefId) {
-      const t = await pool.query(`select id from teams where chef_id = $1`, [
-        chefId,
-      ]);
+      const t = await pool.query(`select id from teams where chef_id = $1`, [chefId]);
       teamIds = t.rows.map((r) => String(r.id));
     } else {
       const t = await pool.query(`select id from teams`);
@@ -63,7 +61,6 @@ router.get("/summary", async (req, res) => {
         filters: { teamId, chefId },
         teamIds: [],
         kpi: {
-          // anciens champs (compat Flutter)
           total: 0,
           presents: 0,
           absents: 0,
@@ -71,8 +68,6 @@ router.get("/summary", async (req, res) => {
           ko: 0,
           nonControles: 0,
           controlled: 0,
-
-          // nouveaux blocs
           current: {
             total: 0,
             presents: 0,
@@ -109,14 +104,21 @@ router.get("/summary", async (req, res) => {
     const currentAbsents = workers.filter((w) => w.attendance === "ABS").length;
     const currentPresents = currentTotal - currentAbsents;
 
-    const currentOk = workers.filter((w) => w.status === "OK").length;
-    const currentKo = workers.filter((w) => w.status === "KO").length;
-
-    const currentControlled = workers.filter((w) => w.controlled === true)
-      .length;
+    const currentControlled = workers.filter(
+      (w) => w.attendance === "PRESENT" && w.controlled === true
+    ).length;
 
     const currentNonControles = workers.filter(
       (w) => w.attendance === "PRESENT" && w.controlled === false
+    ).length;
+
+    // ✅ FIX: OK/KO = uniquement sur les contrôlés (et présents)
+    const currentOk = workers.filter(
+      (w) => w.attendance === "PRESENT" && w.controlled === true && w.status === "OK"
+    ).length;
+
+    const currentKo = workers.filter(
+      (w) => w.attendance === "PRESENT" && w.controlled === true && w.status === "KO"
     ).length;
 
     // 3) last check in period per worker
@@ -155,8 +157,9 @@ router.get("/summary", async (req, res) => {
 
     const periodControlled = lastChecks.length;
     const periodOk = lastChecks.filter((c) => c.result === "CONFORME").length;
-    const periodKo = lastChecks.filter((c) => c.result === "NON_CONFORME")
-      .length;
+
+    // ✅ FIX: "KO" doit compter les checks KO (pas NON_CONFORME)
+    const periodKo = lastChecks.filter((c) => c.result === "KO").length;
 
     const checkedSet = new Set(lastChecks.map((c) => c.workerId));
     const periodNonControles = workers.filter(
@@ -164,9 +167,8 @@ router.get("/summary", async (req, res) => {
     ).length;
 
     // koWorkers period + infos modification
-    const koChecks = lastChecks.filter((c) => c.result === "NON_CONFORME");
+    const koChecks = lastChecks.filter((c) => c.result === "KO");
     const koIds = new Set(koChecks.map((c) => c.workerId));
-
     const koByWorker = new Map(koChecks.map((c) => [c.workerId, c]));
 
     const koWorkers = workers
@@ -191,7 +193,7 @@ router.get("/summary", async (req, res) => {
       filters: { teamId, chefId },
       teamIds,
 
-      // ✅ compat Flutter: on garde l’ancien format (basé current)
+      // compat Flutter: on garde l’ancien format (basé current)
       kpi: {
         total: currentTotal,
         presents: currentPresents,
@@ -201,7 +203,6 @@ router.get("/summary", async (req, res) => {
         nonControles: currentNonControles,
         controlled: currentControlled,
 
-        // ✅ nouveaux blocs pour toi
         current: {
           total: currentTotal,
           presents: currentPresents,
