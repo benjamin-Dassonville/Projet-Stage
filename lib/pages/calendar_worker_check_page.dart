@@ -115,8 +115,12 @@ class _CalendarWorkerCheckPageState extends State<CalendarWorkerCheckPage> {
       });
 
       // Load diff if modified
-      if (check != null) {
+      final isModified = (check?['isModified'] == true);
+      if (check != null && isModified) {
         _loadDiff();
+      } else {
+        diffData = null;
+        displayedItems = items; // version normale
       }
     } catch (e) {
       setState(() {
@@ -193,6 +197,7 @@ class _CalendarWorkerCheckPageState extends State<CalendarWorkerCheckPage> {
     final name = (worker?['name'] ?? widget.workerId).toString();
     final dateStr = widget.date ?? '';
     final result = (check?['result'] ?? '').toString();
+    final isModified = (check?['isModified'] == true);
 
     return Scaffold(
       appBar: AppBar(
@@ -225,6 +230,11 @@ class _CalendarWorkerCheckPageState extends State<CalendarWorkerCheckPage> {
                                   style: const TextStyle(fontWeight: FontWeight.w700),
                                 ),
                               ),
+                              if (check != null && isModified)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: _pill('Modifié', Colors.orange),
+                                ),
                               if (check != null)
                                 _pill(_labelResult(result), _colorForResult(result))
                               else
@@ -233,7 +243,7 @@ class _CalendarWorkerCheckPageState extends State<CalendarWorkerCheckPage> {
                           ),
                         ),
                       ),
-                      if (check != null)
+                      if (check != null && isModified)
                         Card(
                           child: Padding(
                             padding: const EdgeInsets.all(12),

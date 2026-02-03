@@ -46,7 +46,6 @@ router.get("/:checkId/diff", async (req, res, next) => {
     );
 
     if (rows.length < 2) {
-      res.set('Cache-Control', 'no-cache');
       return res.json({ hasUpdate: false });
     }
 
@@ -57,11 +56,9 @@ router.get("/:checkId/diff", async (req, res, next) => {
     const hasUpdate = rows.some(r => r.action === 'UPDATE');
 
     if (!hasUpdate || !original || !modified) {
-      res.set('Cache-Control', 'no-cache');
       return res.json({ hasUpdate: false });
     }
 
-    res.set('Cache-Control', 'no-cache');
     return res.json({
       hasUpdate: true,
       original,
