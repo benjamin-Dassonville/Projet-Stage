@@ -21,6 +21,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Désactiver ETag pour éviter les 304 Not Modified
+app.set("etag", false);
+
 // Connexion DB (charge aussi le .env via db.js)
 await import("./db.js");
 
