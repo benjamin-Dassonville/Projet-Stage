@@ -30,6 +30,15 @@ class _CalendarTeamPageState extends State<CalendarTeamPage> {
     _load();
   }
 
+  void _back() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      // fallback : revenir au calendrier
+      context.go('/calendar');
+    }
+  }
+
   String _prettyDate(String? iso) {
     if (iso == null || iso.isEmpty) return '-';
     final parts = iso.split('-');
@@ -105,6 +114,11 @@ class _CalendarTeamPageState extends State<CalendarTeamPage> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Retour',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _back,
+        ),
         title: Text('Équipe • $teamName'),
         actions: [
           IconButton(
@@ -140,7 +154,6 @@ class _CalendarTeamPageState extends State<CalendarTeamPage> {
               ),
             ),
             const SizedBox(height: 12),
-
             if (loading)
               const Expanded(child: Center(child: CircularProgressIndicator()))
             else if (error != null)
@@ -157,7 +170,6 @@ class _CalendarTeamPageState extends State<CalendarTeamPage> {
                     final workerId = (w['workerId'] ?? '').toString();
                     final name = (w['name'] ?? workerId).toString();
                     final hasCheck = (w['hasCheck'] ?? false) == true;
-
                     final result = (w['result'] ?? '').toString();
 
                     return ListTile(

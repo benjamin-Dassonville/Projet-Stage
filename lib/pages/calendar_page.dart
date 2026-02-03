@@ -30,6 +30,16 @@ class _CalendarPageState extends State<CalendarPage> {
 
   String _prettyDate(DateTime d) => '${_two(d.day)}/${_two(d.month)}/${d.year}';
 
+  void _backToHome() {
+    // si on a une page précédente, on pop (UX classique)
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      // sinon on force le retour au home
+      context.go('/');
+    }
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -86,6 +96,11 @@ class _CalendarPageState extends State<CalendarPage> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Retour',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _backToHome,
+        ),
         title: const Text('Calendrier des contrôles'),
         actions: [
           IconButton(
@@ -126,7 +141,6 @@ class _CalendarPageState extends State<CalendarPage> {
               ),
             ),
             const SizedBox(height: 12),
-
             if (loading)
               const Expanded(child: Center(child: CircularProgressIndicator()))
             else if (error != null)
