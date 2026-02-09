@@ -198,6 +198,86 @@ class _BriefingTeamPageState extends State<BriefingTeamPage> {
     }
   }
 
+  Future<void> _openAddCustomTopicDialog() async {
+    final titleCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Ajouter un sujet'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleCtrl,
+              decoration: const InputDecoration(labelText: 'Titre *'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: descCtrl,
+              decoration: const InputDecoration(labelText: 'Description (optionnel)'),
+              minLines: 2,
+              maxLines: 4,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Créer'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    final title = titleCtrl.text.trim();
+    final description = descCtrl.text.trim();
+
+    if (title.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Le titre est obligatoire.')),
+      );
+      return;
+    }
+
+    await _createCustomTopic(title: title, description: description.isEmpty ? null : description);
+  }
+
+  Future<void> _createCustomTopic({required String title, String? description}) async {
+    try {
+      final api = ApiClient();
+
+      final briefingId = (briefing?['id'] ?? '').toString();
+      if (briefingId.isEmpty) throw Exception('briefingId manquant');
+
+      await api.dio.post(
+        '/briefings/$briefingId/custom-topics',
+        data: {
+          'title': title,
+          'description': description,
+        },
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sujet ajouté ✅')),
+      );
+
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur ajout sujet: $e')),
+      );
+    }
+  }
+
   Widget _pill(String text) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -224,6 +304,11 @@ class _BriefingTeamPageState extends State<BriefingTeamPage> {
           ),
           title: const Text('Briefing'),
           actions: [
+            IconButton(
+              tooltip: 'Ajouter un sujet',
+              icon: const Icon(Icons.add),
+              onPressed: _openAddCustomTopicDialog,
+            ),
             IconButton(
               tooltip: 'Rafraîchir',
               onPressed: _load,
@@ -265,6 +350,11 @@ class _BriefingTeamPageState extends State<BriefingTeamPage> {
             tooltip: 'Choisir une date',
             onPressed: _pickDay,
             icon: const Icon(Icons.calendar_month),
+          ),
+          IconButton(
+            tooltip: 'Ajouter un sujet',
+            icon: const Icon(Icons.add),
+            onPressed: _openAddCustomTopicDialog,
           ),
           IconButton(
             tooltip: 'Rafraîchir',

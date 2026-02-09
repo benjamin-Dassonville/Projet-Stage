@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict T4vNV0sdxxVywGv2g2RSaNahpUcf11RjHgxpmIxqsWYVJ9QKq5WcZPGeVkHVhIa
+\restrict MaEfrBmrjjHFhsR5As5nyZIY6eAQG6RNb08SvEMyoFTvSZmnqMKYBi9tvnyDUDN
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.7 (Homebrew)
@@ -3242,7 +3242,10 @@ CREATE TABLE public.briefing_custom_topics (
     title text NOT NULL,
     description text,
     created_by_role text DEFAULT 'chef'::text NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    checked boolean DEFAULT false NOT NULL,
+    checked_at timestamp without time zone,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -4322,7 +4325,7 @@ COPY public.briefing_custom_topic_checks (id, briefing_id, custom_topic_id, chec
 -- Data for Name: briefing_custom_topics; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.briefing_custom_topics (id, briefing_id, title, description, created_by_role, created_at) FROM stdin;
+COPY public.briefing_custom_topics (id, briefing_id, title, description, created_by_role, created_at, checked, checked_at, updated_at) FROM stdin;
 \.
 
 
@@ -4371,7 +4374,8 @@ COPY public.briefing_topics (id, title, description, is_active, created_at) FROM
 --
 
 COPY public.briefings (id, team_id, chef_id, day, done, done_at, created_at, updated_at) FROM stdin;
-1	team_sylvain_dassonville	\N	2026-02-09	f	\N	2026-02-09 08:09:32.612982+00	2026-02-09 09:00:54.00646+00
+45	team_sylvain_dassonville	\N	2026-02-08	f	\N	2026-02-09 09:33:20.227463+00	2026-02-09 09:33:20.227463+00
+1	team_sylvain_dassonville	\N	2026-02-09	f	\N	2026-02-09 08:09:32.612982+00	2026-02-09 09:47:09.364625+00
 \.
 
 
@@ -4965,7 +4969,7 @@ SELECT pg_catalog.setval('public.briefing_topics_id_seq', 1, false);
 -- Name: briefings_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.briefings_id_seq', 35, true);
+SELECT pg_catalog.setval('public.briefings_id_seq', 48, true);
 
 
 --
@@ -8517,5 +8521,5 @@ ALTER EVENT TRIGGER pgrst_drop_watch OWNER TO supabase_admin;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict T4vNV0sdxxVywGv2g2RSaNahpUcf11RjHgxpmIxqsWYVJ9QKq5WcZPGeVkHVhIa
+\unrestrict MaEfrBmrjjHFhsR5As5nyZIY6eAQG6RNb08SvEMyoFTvSZmnqMKYBi9tvnyDUDN
 

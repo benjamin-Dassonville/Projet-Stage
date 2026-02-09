@@ -50,6 +50,8 @@ router.get("/team/:teamId", requireRoleBriefing, async (req, res) => {
   const teamId = String(req.params.teamId || "").trim();
   const day = isoDayOrToday(req.query.day);
 
+  console.log("ENTER GET /briefings/team/:teamId", { teamId, day });
+
   if (!teamId) return res.status(400).json({ error: "Missing teamId" });
   if (!day) return res.status(400).json({ error: "Invalid day (YYYY-MM-DD)" });
 
@@ -86,14 +88,14 @@ router.get("/team/:teamId", requireRoleBriefing, async (req, res) => {
       `
     with required_topic_ids as (
         -- Obligatoire à une date précise
-        select brt.topic_id
+        select distinct brt.topic_id
         from briefing_required_topics brt
         where brt.day = $2::date
 
         union
 
         -- Obligatoire selon règles (ex: tous les jeudis), optionnellement bornées par dates
-        select r.topic_id
+        select distinct r.topic_id
         from briefing_required_rules r
         where r.is_active = true
             and (r.team_id is null or r.team_id = $1)
@@ -122,18 +124,20 @@ router.get("/team/:teamId", requireRoleBriefing, async (req, res) => {
     const customRes = await pool.query(
       `
       select
-        id,
-        briefing_id as "briefingId",
-        title,
-        description,
-        checked,
-        checked_at as "checkedAt",
-        created_by_role as "createdByRole",
-        created_at as "createdAt",
-        updated_at as "updatedAt"
-      from briefing_custom_topics
-      where briefing_id = $1
-      order by created_at asc
+        bct.id as "id",
+        bct.briefing_id as "briefingId",
+        bct.title,
+        bct.description,
+        coalesce(bctc.checked, false) as checked,
+        bct.created_by_role as "createdByRole",
+        bct.created_at as "createdAt",
+        bct.updated_at as "updatedAt"
+      from briefing_custom_topics bct
+      left join briefing_custom_topic_checks bctc
+        on bctc.custom_topic_id = bct.id
+       and bctc.briefing_id = $1
+      where bct.briefing_id = $1
+      order by bct.created_at asc
       `,
       [briefing.id],
     );
