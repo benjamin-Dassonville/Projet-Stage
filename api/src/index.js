@@ -15,6 +15,8 @@ import { requireAuth } from "./middleware/auth.js";
 import missesRoutes from "./routes/misses.js";
 import calendarRouter from "./routes/calendar.js";
 import checkAuditsRouter from "./routes/check_audits.js";
+import briefingsRouter from "./routes/briefings.js";
+
 
 const app = express();
 
@@ -46,7 +48,10 @@ app.use("/health", healthRoutes);
 app.use("/misses", requireAuth, missesRoutes);
 app.use("/calendar", requireAuth, calendarRouter);
 app.use("/check-audits", checkAuditsRouter);
+app.use("/briefings", requireAuth, briefingsRouter);
 
+
+app.use(requireAuth);
 
 const port = process.env.PORT || 3000;
 

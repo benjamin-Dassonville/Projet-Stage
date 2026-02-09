@@ -31,7 +31,6 @@ class _TeamPageState extends State<TeamPage> {
     }
   }
 
-  // ✅ Format plus lisible pour "Dernier contrôle"
   String prettyDateShort(String? iso) {
     if (iso == null || iso.isEmpty) return '';
     try {
@@ -107,7 +106,6 @@ class _TeamPageState extends State<TeamPage> {
     return StatusBadge(status: status);
   }
 
-  // ✅ Petit badge "!" (alerte seuil dépassé)
   Widget _alertBang({required int alertsCount}) {
     if (alertsCount <= 0) return const SizedBox.shrink();
 
@@ -145,6 +143,11 @@ class _TeamPageState extends State<TeamPage> {
     return int.tryParse('${v ?? fallback}') ?? fallback;
   }
 
+  void _openBriefing() {
+    // Route Flutter à créer + endpoints backend à créer
+    context.push('/teams/${widget.teamId}/briefing');
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
@@ -159,6 +162,18 @@ class _TeamPageState extends State<TeamPage> {
             onPressed: () => _back(context),
           ),
           title: Text('Équipe ${widget.teamId}'),
+          actions: [
+            IconButton(
+              tooltip: 'Briefing',
+              onPressed: widget.teamId.isEmpty ? null : _openBriefing,
+              icon: const Icon(Icons.assignment_turned_in_outlined),
+            ),
+            IconButton(
+              onPressed: loadWorkers,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Rafraîchir',
+            ),
+          ],
         ),
         body: Padding(
           padding: const EdgeInsets.all(16),
@@ -187,7 +202,16 @@ class _TeamPageState extends State<TeamPage> {
           ),
           title: Text('Équipe ${widget.teamId}'),
           actions: [
-            IconButton(onPressed: loadWorkers, icon: const Icon(Icons.refresh)),
+            IconButton(
+              tooltip: 'Briefing',
+              onPressed: widget.teamId.isEmpty ? null : _openBriefing,
+              icon: const Icon(Icons.assignment_turned_in_outlined),
+            ),
+            IconButton(
+              onPressed: loadWorkers,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Rafraîchir',
+            ),
           ],
         ),
         body: const Center(child: Text("Aucun travailleur dans cette équipe.")),
@@ -202,6 +226,11 @@ class _TeamPageState extends State<TeamPage> {
         ),
         title: Text('Équipe ${widget.teamId}'),
         actions: [
+          IconButton(
+            tooltip: 'Briefing',
+            onPressed: widget.teamId.isEmpty ? null : _openBriefing,
+            icon: const Icon(Icons.assignment_turned_in_outlined),
+          ),
           IconButton(
             onPressed: loadWorkers,
             icon: const Icon(Icons.refresh),
@@ -219,11 +248,7 @@ class _TeamPageState extends State<TeamPage> {
           final attendance = (w['attendance'] ?? 'PRESENT') as String;
           final isAbsent = attendance == 'ABS';
 
-          // ✅ API: alertsCount (int ou string)
           final alertsCount = _parseInt(w['alertsCount'], fallback: 0);
-
-          // On garde le bouton "présence" actif même si ABS,
-          // mais on rend tout le reste "inactif" visuellement.
           final tileOpacity = isAbsent ? 0.45 : 1.0;
 
           return Opacity(
@@ -268,7 +293,6 @@ class _TeamPageState extends State<TeamPage> {
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           visualDensity: VisualDensity.compact,
                         ),
-                        // ✅ actif même si ABS (sinon tu ne peux plus remettre présent)
                         onPressed: () => toggleAttendance(w),
                         child: Text(isAbsent ? 'Mettre présent' : 'Mettre ABS'),
                       ),
@@ -276,18 +300,14 @@ class _TeamPageState extends State<TeamPage> {
                   ),
                 ],
               ),
-
-              // ✅ trailing = "!" + badge
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // On affiche l'alerte même si absent (info utile).
                   _alertBang(alertsCount: alertsCount),
                   if (alertsCount > 0) const SizedBox(width: 8),
                   _attendanceBadge(isAbsent: isAbsent, status: status),
                 ],
               ),
-
               onTap: isAbsent
                   ? null
                   : () async {

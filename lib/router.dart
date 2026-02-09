@@ -19,6 +19,8 @@ import 'pages/calendar_worker_check_page.dart';
 
 import 'pages/roles_manager_page.dart';
 
+import 'pages/briefing_team_page.dart';
+
 bool _isAllowed(AppRole? role, Set<AppRole> allowed) {
   if (role == null) return false;
   return allowed.contains(role);
@@ -41,10 +43,7 @@ GoRouter createRouter(AuthState auth) {
     initialLocation: '/login',
     refreshListenable: auth,
     routes: [
-      GoRoute(
-        path: '/login',
-        builder: (_, __) => const LoginPage(),
-      ),
+      GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
 
       GoRoute(
         path: '/forbidden',
@@ -74,12 +73,20 @@ GoRouter createRouter(AuthState auth) {
       ),
 
       GoRoute(
+        path: '/teams/:teamId/briefing',
+        redirect: (context, state) => _guard(auth, state, {AppRole.chef}),
+        builder: (_, state) {
+          final teamId = state.pathParameters['teamId']!;
+          final date =
+              state.uri.queryParameters['date']; // optionnel (YYYY-MM-DD)
+          return BriefingTeamPage(teamId: teamId, date: date);
+        },
+      ),
+
+      GoRoute(
         path: '/workers/:workerId/check',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.chef, AppRole.admin},
-        ),
+        redirect: (context, state) =>
+            _guard(auth, state, {AppRole.chef, AppRole.admin}),
         builder: (_, state) {
           final workerId = state.pathParameters['workerId']!;
           return WorkerCheckPage(workerId: workerId);
@@ -95,21 +102,21 @@ GoRouter createRouter(AuthState auth) {
       // ✅ Calendrier contrôles : ADMIN + CHEF + DIRECTION
       GoRoute(
         path: '/calendar',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.admin, AppRole.chef, AppRole.direction},
-        ),
+        redirect: (context, state) => _guard(auth, state, {
+          AppRole.admin,
+          AppRole.chef,
+          AppRole.direction,
+        }),
         builder: (_, __) => const CalendarPage(),
       ),
 
       GoRoute(
         path: '/calendar/teams/:teamId',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.admin, AppRole.chef, AppRole.direction},
-        ),
+        redirect: (context, state) => _guard(auth, state, {
+          AppRole.admin,
+          AppRole.chef,
+          AppRole.direction,
+        }),
         builder: (_, state) {
           final teamId = state.pathParameters['teamId']!;
           final date = state.uri.queryParameters['date']; // YYYY-MM-DD
@@ -119,11 +126,11 @@ GoRouter createRouter(AuthState auth) {
 
       GoRoute(
         path: '/calendar/workers/:workerId',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.admin, AppRole.chef, AppRole.direction},
-        ),
+        redirect: (context, state) => _guard(auth, state, {
+          AppRole.admin,
+          AppRole.chef,
+          AppRole.direction,
+        }),
         builder: (_, state) {
           final workerId = state.pathParameters['workerId']!;
           final date = state.uri.queryParameters['date']; // YYYY-MM-DD
@@ -133,31 +140,31 @@ GoRouter createRouter(AuthState auth) {
 
       GoRoute(
         path: '/roles',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.admin, AppRole.chef, AppRole.direction},
-        ),
+        redirect: (context, state) => _guard(auth, state, {
+          AppRole.admin,
+          AppRole.chef,
+          AppRole.direction,
+        }),
         builder: (_, __) => const RolesManagerPage(),
       ),
 
       GoRoute(
         path: '/control-teams',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.chef, AppRole.admin, AppRole.direction},
-        ),
+        redirect: (context, state) => _guard(auth, state, {
+          AppRole.chef,
+          AppRole.admin,
+          AppRole.direction,
+        }),
         builder: (_, __) => const TeamControlPage(),
       ),
 
       GoRoute(
         path: '/control-teams/:teamId',
-        redirect: (context, state) => _guard(
-          auth,
-          state,
-          {AppRole.chef, AppRole.admin, AppRole.direction},
-        ),
+        redirect: (context, state) => _guard(auth, state, {
+          AppRole.chef,
+          AppRole.admin,
+          AppRole.direction,
+        }),
         builder: (_, state) {
           final teamId = state.pathParameters['teamId']!;
           return ControlTeamPage(teamId: teamId);

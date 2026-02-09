@@ -18,6 +18,18 @@
             "approve": true,
             "matchCommandLine": true
         },
-        "timeout": true
+        "timeout": true,
+        "/^cd /Applications/XAMPP/xamppfiles/htdocs/flutter/projet_stage/api && node --check src/routes/briefings\\.js$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node --check src/db\\.js$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node --check src/routes/briefings\\.js$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }
