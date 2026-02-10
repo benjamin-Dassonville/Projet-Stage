@@ -1,79 +1,58 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
-import 'package:flutter/material.dart' show debugPrint;
+import 'package:flutter/foundation.dart';
 
 import '../app_state.dart';
-import '../auth/app_role.dart';
 
 class ApiClient {
-  static final ApiClient _instance = ApiClient._internal();
-  factory ApiClient() => _instance;
+  static const String _baseUrl = 'http://localhost:3000';
 
-  late final Dio dio;
+  final Dio dio;
 
-  ApiClient._internal() {
-    final baseUrl = _computeBaseUrl();
-
-    dio = Dio(
-      BaseOptions(
-        baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 5),
-        receiveTimeout: const Duration(seconds: 5),
-      ),
-    );
-
-    debugPrint('[ApiClient] baseUrl=$baseUrl');
-
+  ApiClient()
+      : dio = Dio(
+          BaseOptions(
+            baseUrl: _baseUrl,
+            connectTimeout: const Duration(seconds: 8),
+            receiveTimeout: const Duration(seconds: 15),
+            sendTimeout: const Duration(seconds: 15),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ),
+        ) {
+    // ✅ IMPORTANT: ajoute Authorization à CHAQUE requête, en fonction du rôle courant
     dio.interceptors.add(
-  InterceptorsWrapper(
-    onRequest: (options, handler) {
-      final AppRole? role = authState.role;
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          // Toujours s'assurer qu'on a une map
+          options.headers = Map<String, dynamic>.from(options.headers);
 
-      if (role != null) {
-        final roleStr = switch (role) {
-          AppRole.chef => 'chef',
-          AppRole.admin => 'admin',
-          AppRole.direction => 'direction',
-        };
-        options.headers['Authorization'] = 'Dev $roleStr';
-      }
+          final role = authState.role;
 
-      // ✅ DEBUG ultra clair
-      debugPrint('➡️ ${options.method} ${options.uri}');
-      debugPrint('➡️ Authorization: ${options.headers['Authorization']}');
-      debugPrint('➡️ Headers: ${options.headers}');
-      debugPrint('➡️ Data: ${options.data}');
+          if (role != null) {
+            // format attendu par ton backend: "Dev admin" / "Dev direction" / "Dev chef"
+            options.headers['Authorization'] = 'Dev ${role.name}';
+          } else {
+            // si pas de rôle -> pas de header (sinon backend renvoie 401 de toute façon)
+            options.headers.remove('Authorization');
+          }
 
           return handler.next(options);
         },
       ),
     );
-  }
 
-  /// Multi-plateforme propre :
-  /// - WEB (Chrome/Safari/PWA) : on prend le hostname courant
-  ///   Ex: tu ouvres http://192.168.1.148:57317 => API devient http://192.168.1.148:3000
-  /// - Android emulator : 10.0.2.2
-  /// - iOS simulator + desktop : localhost
-  /// - Téléphone en app native iOS/Android (pas web) : il faut une IP (sinon localhost = téléphone)
-  String _computeBaseUrl() {
-    const port = 3000;
-
-    if (kIsWeb) {
-      // Sur le web, Uri.base contient l'URL réelle (host = domaine / IP)
-      final host = (Uri.base.host.isEmpty) ? 'localhost' : Uri.base.host;
-      // Si tu utilises https en prod, ton API devra aussi être en https (sinon mixed content).
-      return 'http://$host:$port';
-    }
-
-    // Mobile / Desktop (non-web)
-    // ✅ Pas de dart:io (ça casse la compilation web), on se base sur TargetPlatform.
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:$port'; // Android emulator -> host machine
-    }
-
-    // iOS simulator + macOS + Windows + Linux -> localhost OK
-    return 'http://localhost:$port';
+    // Logger utile (tu peux le laisser)
+    dio.interceptors.add(
+      LogInterceptor(
+        request: true,
+        requestHeader: true,
+        requestBody: true,
+        responseHeader: false,
+        responseBody: true,
+        error: true,
+        logPrint: (o) => debugPrint(o.toString()),
+      ),
+    );
   }
 }

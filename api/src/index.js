@@ -37,18 +37,17 @@ app.use("/checks", requireAuth, checksRoutes);
 app.use("/dashboard", requireAuth, dashboardRoutes);
 app.use("/attendance", requireAuth, attendanceRoutes);
 app.use("/teams-meta", requireAuth, teamsMetaRouter);
-
-// Roles & Equipment management
+app.use("/briefings", requireAuth, briefingsRouter);
 app.use("/roles", requireAuth, rolesRoutes);
 app.use("/equipment", requireAuth, equipmentRoutes);
+app.use("/misses", requireAuth, missesRoutes);
+app.use("/calendar", requireAuth, calendarRouter);
+
 
 app.use("/chefs", chefsRouter);
 app.use("/health", healthRoutes);
-
-app.use("/misses", requireAuth, missesRoutes);
-app.use("/calendar", requireAuth, calendarRouter);
 app.use("/check-audits", checkAuditsRouter);
-app.use("/briefings", requireAuth, briefingsRouter);
+
 
 
 app.use(requireAuth);

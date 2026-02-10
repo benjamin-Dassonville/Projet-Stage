@@ -23,7 +23,6 @@ class HomePage extends StatelessWidget {
       return;
     }
 
-    // Optionnel: mettre UNASSIGNED à la fin
     teams.sort((a, b) {
       final aId = (a['id'] ?? '').toString();
       final bId = (b['id'] ?? '').toString();
@@ -79,7 +78,10 @@ class HomePage extends StatelessWidget {
                       const Expanded(
                         child: Text(
                           "Choisir une équipe",
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                       IconButton(
@@ -118,7 +120,8 @@ class HomePage extends StatelessWidget {
                         : ListView.separated(
                             shrinkWrap: true,
                             itemCount: filtered.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
                             itemBuilder: (_, i) {
                               final t = filtered[i];
                               final id = (t['id'] ?? '').toString();
@@ -127,7 +130,8 @@ class HomePage extends StatelessWidget {
 
                               return ListTile(
                                 title: Text(title),
-                                onTap: () => Navigator.pop(sheetContext, id),
+                                onTap: () =>
+                                    Navigator.pop(sheetContext, id),
                               );
                             },
                           ),
@@ -150,11 +154,17 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final role = authState.role;
 
-    // Visibilité boutons (UI seulement — sécurité réelle = router)
-    final canOpenTeam = role == AppRole.chef; // équipe : chef uniquement
-    final canRoles = role == AppRole.chef || role == AppRole.direction || role == AppRole.admin;
-    final canControlTeams = role == AppRole.chef || role == AppRole.admin || role == AppRole.direction;
+    // Visibilité boutons (UI uniquement)
+    final canOpenTeam = role == AppRole.chef;
+    final canRoles =
+        role == AppRole.chef || role == AppRole.direction || role == AppRole.admin;
+    final canControlTeams =
+        role == AppRole.chef || role == AppRole.admin || role == AppRole.direction;
     final canDashboard = role == AppRole.admin;
+
+    // 🔥 NOUVEAU : accès gestion briefings (admin / direction)
+    final canBriefingsAdmin =
+        role == AppRole.admin || role == AppRole.direction;
 
     final actions = <Widget>[
       if (canOpenTeam)
@@ -163,18 +173,29 @@ class HomePage extends StatelessWidget {
           icon: const Icon(Icons.groups_outlined),
           label: const Text('Ouvrir équipe'),
         ),
+
       if (canRoles)
         FilledButton.tonalIcon(
           onPressed: () => context.push('/roles'),
           icon: const Icon(Icons.inventory_2_outlined),
           label: const Text('Rôles & équipements'),
         ),
+
       if (canControlTeams)
         OutlinedButton.icon(
           onPressed: () => context.push('/control-teams'),
           icon: const Icon(Icons.manage_accounts_outlined),
           label: const Text('Contrôle équipes'),
         ),
+
+      // ✅ BOUTON BRIEFINGS ADMIN
+      if (canBriefingsAdmin)
+        FilledButton.icon(
+          onPressed: () => context.push('/briefings/admin'),
+          icon: const Icon(Icons.assignment_turned_in_outlined),
+          label: const Text('Gestion des briefings'),
+        ),
+
       if (canDashboard)
         FilledButton.tonalIcon(
           onPressed: () => context.push('/dashboard'),
@@ -233,20 +254,19 @@ class HomePage extends StatelessWidget {
                             );
                           }
 
-                          // ✅ PHONE: colonne pleine largeur
                           if (isPhone) {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 for (int i = 0; i < actions.length; i++) ...[
                                   actions[i],
-                                  if (i != actions.length - 1) const SizedBox(height: 12),
+                                  if (i != actions.length - 1)
+                                    const SizedBox(height: 12),
                                 ],
                               ],
                             );
                           }
 
-                          // ✅ DESKTOP/TABLET: Wrap (pas d'overflow)
                           return Center(
                             child: Wrap(
                               spacing: 12,
@@ -254,10 +274,7 @@ class HomePage extends StatelessWidget {
                               alignment: WrapAlignment.center,
                               children: [
                                 for (final w in actions)
-                                  SizedBox(
-                                    width: 240, // taille stable, mais wrap si ça dépasse
-                                    child: w,
-                                  ),
+                                  SizedBox(width: 240, child: w),
                               ],
                             ),
                           );

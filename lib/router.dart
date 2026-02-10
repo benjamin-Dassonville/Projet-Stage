@@ -21,6 +21,12 @@ import 'pages/roles_manager_page.dart';
 
 import 'pages/briefing_team_page.dart';
 
+// ✅ Briefings ADMIN hub + pages
+import 'pages/briefings_admin_page.dart';
+import 'pages/briefings_topics_admin_page.dart';
+import 'pages/briefings_required_day_admin_page.dart';
+import 'pages/briefings_rules_admin_page.dart';
+
 bool _isAllowed(AppRole? role, Set<AppRole> allowed) {
   if (role == null) return false;
   return allowed.contains(role);
@@ -77,8 +83,7 @@ GoRouter createRouter(AuthState auth) {
         redirect: (context, state) => _guard(auth, state, {AppRole.chef}),
         builder: (_, state) {
           final teamId = state.pathParameters['teamId']!;
-          final date =
-              state.uri.queryParameters['date']; // optionnel (YYYY-MM-DD)
+          final date = state.uri.queryParameters['date']; // optionnel (YYYY-MM-DD)
           return BriefingTeamPage(teamId: teamId, date: date);
         },
       ),
@@ -136,6 +141,38 @@ GoRouter createRouter(AuthState auth) {
           final date = state.uri.queryParameters['date']; // YYYY-MM-DD
           return CalendarWorkerCheckPage(workerId: workerId, date: date);
         },
+      ),
+
+      // ✅ HUB: page avec les 3 cartes/boutons
+      GoRoute(
+        path: '/briefings/admin',
+        redirect: (context, state) =>
+            _guard(auth, state, {AppRole.admin, AppRole.direction}),
+        builder: (_, __) => const BriefingsAdminPage(),
+      ),
+
+      // ✅ 1) Sujets
+      GoRoute(
+        path: '/briefings/admin/topics',
+        redirect: (context, state) =>
+            _guard(auth, state, {AppRole.admin, AppRole.direction}),
+        builder: (_, __) => const BriefingsTopicsAdminPage(),
+      ),
+
+      // ✅ 2) Obligations par date
+      GoRoute(
+        path: '/briefings/admin/required-day',
+        redirect: (context, state) =>
+            _guard(auth, state, {AppRole.admin, AppRole.direction}),
+        builder: (_, __) => const BriefingsRequiredDayAdminPage(),
+      ),
+
+      // ✅ 3) Règles récurrentes
+      GoRoute(
+        path: '/briefings/admin/rules',
+        redirect: (context, state) =>
+            _guard(auth, state, {AppRole.admin, AppRole.direction}),
+        builder: (_, __) => const BriefingsRulesAdminPage(),
       ),
 
       GoRoute(

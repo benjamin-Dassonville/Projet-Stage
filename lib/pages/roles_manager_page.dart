@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 
+import 'package:dio/dio.dart';
+
 class RolesManagerPage extends StatefulWidget {
   const RolesManagerPage({super.key});
 
@@ -194,6 +196,27 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
         )) ??
         false;
   }
+
+  Future<void> _showDeleteBlockedPopup(String name) async {
+  if (!mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Suppression impossible'),
+      content: Text(
+        'L’équipement "$name" ne peut pas être supprimé.\n\n'
+        'Il est déjà utilisé dans des contrôles ou fait partie de l’historique.\n\n'
+        'Pour préserver l’historique, la suppression définitive est interdite.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
 
   Future<void> _createRole() async {
     final label = await _promptText(
@@ -413,7 +436,7 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        "0 = désactivé → plus d’alertes/strikes pour cet équipement.",
+                        "0 = désactivé → plus d'alertes/strikes pour cet équipement.",
                         style: TextStyle(fontSize: 12),
                       ),
                     ),
@@ -734,30 +757,52 @@ class _RolesManagerPageState extends State<RolesManagerPage> {
   }
 
   Future<void> _deleteEquipment(String equipmentId, String name) async {
-    final ok = await _confirm(
-      title: 'Supprimer équipement',
-      message:
-          'Supprimer "$name" ?\n\nAttention: impossible si déjà utilisé dans des contrôles (checks).',
-    );
-    if (!ok) return;
+  final ok = await _confirm(
+    title: 'Supprimer équipement',
+    message:
+        'Supprimer "$name" ?\n\nAttention: impossible si déjà utilisé dans des contrôles (checks).',
+  );
+  if (!ok) return;
 
-    try {
-      final api = ApiClient();
-      await api.dio.delete('/equipment/$equipmentId');
-      final roleId = selectedRole?['id']?.toString();
-      if (roleId != null && roleId.isNotEmpty) {
-        await _loadRoleEquipments(roleId);
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Équipement supprimé')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur suppression: $e')),
-      );
+  try {
+    final api = ApiClient();
+    await api.dio.delete('/equipment/$equipmentId');
+
+    final roleId = selectedRole?['id']?.toString();
+    if (roleId != null && roleId.isNotEmpty) {
+      await _loadRoleEquipments(roleId);
     }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Équipement supprimé')),
+    );
+  } catch (e) {
+    if (!mounted) return;
+    // ✅ Dio : on lit le status HTTP proprement
+    if (e is DioException) {
+      final status = e.response?.statusCode;
+      // 409 = conflit (souvent FK / historique / déjà utilisé)
+      if (status == 409) {
+        await _showDeleteBlockedPopup(name);
+        return;
+      }
+      // optionnel: si ton backend renvoie un message explicite
+      final serverMsg = e.response?.data?.toString().toLowerCase() ?? '';
+      if (serverMsg.contains('histor') ||
+          serverMsg.contains('constraint') ||
+          serverMsg.contains('foreign') ||
+          serverMsg.contains('check')) {
+        await _showDeleteBlockedPopup(name);
+        return;
+      }
+    }
+    // fallback
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Erreur suppression: $e')),
+    );
   }
+}
 
   void _selectRole(Map<String, dynamic> role) {
     final id = role['id']?.toString();

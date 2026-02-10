@@ -23,6 +23,7 @@ class _BriefingTeamPageState extends State<BriefingTeamPage> {
   // Réponse API
   Map<String, dynamic>? briefing; // { id, teamId, day, done, doneAt, ... }
   List<Map<String, dynamic>> requiredTopics = []; // { topicId, title, description, checked, ... }
+  List<Map<String, dynamic>> customTopics = []; // { id, briefingId, title, description, checked, ... }
 
   @override
   void initState() {
@@ -94,11 +95,15 @@ class _BriefingTeamPageState extends State<BriefingTeamPage> {
 
       final m = (res.data as Map).cast<String, dynamic>();
       final b = (m['briefing'] as Map?)?.cast<String, dynamic>();
-      final list = (m['requiredTopics'] as List?) ?? [];
+      final reqList = (m['requiredTopics'] as List?) ?? [];
+      final customList = (m['customTopics'] as List?) ?? [];
 
       setState(() {
         briefing = b;
-        requiredTopics = list
+        requiredTopics = reqList
+            .map((e) => (e as Map).cast<String, dynamic>())
+            .toList();
+        customTopics = customList
             .map((e) => (e as Map).cast<String, dynamic>())
             .toList();
         loading = false;
@@ -274,6 +279,42 @@ class _BriefingTeamPageState extends State<BriefingTeamPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erreur ajout sujet: $e')),
+      );
+    }
+  }
+
+  Future<void> _toggleCustomTopic(String customId, bool checked) async {
+    if (!_hasBriefingId) return;
+    if (customId.isEmpty) return;
+
+    // Optimistic UI
+    final idx = customTopics.indexWhere((t) => '${t['id']}' == customId);
+    if (idx < 0) return;
+
+    final prev = (customTopics[idx]['checked'] == true);
+
+    setState(() {
+      customTopics[idx] = {...customTopics[idx], 'checked': checked, '_saving': true};
+    });
+
+    try {
+      final api = ApiClient();
+      await api.dio.patch(
+        '/briefings/$_briefingId/custom-topics/$customId',
+        data: {'checked': checked},
+      );
+
+      if (!mounted) return;
+      setState(() {
+        customTopics[idx] = {...customTopics[idx], 'checked': checked, '_saving': false};
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        customTopics[idx] = {...customTopics[idx], 'checked': prev, '_saving': false};
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur sujet personnalisé: $e')),
       );
     }
   }
@@ -488,6 +529,61 @@ class _BriefingTeamPageState extends State<BriefingTeamPage> {
                   onTap: saving
                       ? null
                       : () => _toggleTopic(topicId, !checked),
+                ),
+              );
+            }),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: const Text(
+                'Sujets ajoutés par le chef',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (customTopics.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('Aucun sujet ajouté pour ce briefing.'),
+            )
+          else
+            ...customTopics.map((t) {
+              final id = t['id'].toString();
+              final title = t['title'] ?? '';
+              final desc = t['description'] ?? '';
+              final checked = t['checked'] == true;
+              final saving = t['_saving'] == true;
+
+              return Card(
+                child: ListTile(
+                  title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: desc.isEmpty ? null : Text(desc),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (saving)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      const SizedBox(width: 8),
+                      Checkbox(
+                        value: checked,
+                        onChanged: saving
+                            ? null
+                            : (v) {
+                                if (v == null) return;
+                                _toggleCustomTopic(id, v);
+                              },
+                      ),
+                    ],
+                  ),
+                  onTap: saving
+                      ? null
+                      : () => _toggleCustomTopic(id, !checked),
                 ),
               );
             }),
