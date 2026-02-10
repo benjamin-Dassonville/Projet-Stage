@@ -172,7 +172,7 @@ GoRouter createRouter(AuthState auth) {
         path: '/briefings/admin/rules',
         redirect: (context, state) =>
             _guard(auth, state, {AppRole.admin, AppRole.direction}),
-        builder: (_, __) => const BriefingsRulesAdminPage(),
+        builder: (_, __) => const BriefingsRecurringRulesAdminPage(),
       ),
 
       GoRoute(

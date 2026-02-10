@@ -284,6 +284,7 @@ router.post("/topics", requireRoleAdminOrDirection, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 /**
  * ✅ DELETE /briefings/topics/:topicId
  * Supprime définitivement un sujet SI il n'est pas référencé.
@@ -338,6 +339,7 @@ router.delete(
     }
   },
 );
+
 /**
  * PATCH /briefings/topics/:topicId
  * (sans updated_at pour éviter ton 500 si colonne inexistante)
@@ -480,13 +482,13 @@ router.delete("/required/:requiredId", requireRoleAdminOrDirection, async (req, 
 });
 
 /* ============================================================================
-   ✅ ADMIN – RÈGLES RÉCURRENTES (pour ta 3e page)
+   ✅ ADMIN – RÈGLES RÉCURRENTES (briefing uniquement)
+   IMPORTANT:
+   - Ton UI appelle /briefings/recurring-rules -> on ajoute alias
 ============================================================================ */
 
-/**
- * GET /briefings/rules
- */
-router.get("/rules", requireRoleAdminOrDirection, async (req, res) => {
+// ------- Handlers partagés (pour éviter doublons) -------
+async function listBriefingRules(req, res) {
   try {
     const { rows } = await pool.query(
       `
@@ -494,8 +496,8 @@ router.get("/rules", requireRoleAdminOrDirection, async (req, res) => {
         r.id,
         (r.weekday + 1) as "isoDow",
         r.team_id as "teamId",
-        r.start_day as "startDay",
-        r.end_day as "endDay",
+        to_char(r.start_day, 'YYYY-MM-DD') as "startDay",
+        to_char(r.end_day, 'YYYY-MM-DD') as "endDay",
         r.is_active as "isActive",
         bt.id as "topicId",
         bt.title,
@@ -507,22 +509,21 @@ router.get("/rules", requireRoleAdminOrDirection, async (req, res) => {
     );
     return res.json(rows);
   } catch (e) {
-    console.error("GET /briefings/rules error:", e);
+    console.error("GET /briefings/(rules|recurring-rules) error:", e);
     return res.status(500).json({ error: "Server error" });
   }
-});
+}
 
-/**
- * POST /briefings/rules  body: { isoDow, topicId, teamId? , startDay?, endDay? }
- * isoDow: 1..7
- */
-router.post("/rules", requireRoleAdminOrDirection, async (req, res) => {
+async function createBriefingRule(req, res) {
   const isoDow = parseIsoWeekday(req.body?.isoDow);
   const topicId = String(req.body?.topicId || "").trim();
   const teamIdRaw = req.body?.teamId;
-  const teamId = teamIdRaw === undefined || teamIdRaw === null || String(teamIdRaw).trim() === ""
-    ? null
-    : String(teamIdRaw).trim();
+  const teamId =
+    teamIdRaw === undefined ||
+    teamIdRaw === null ||
+    String(teamIdRaw).trim() === ""
+      ? null
+      : String(teamIdRaw).trim();
 
   const startDay = req.body?.startDay ? isoDayOrToday(req.body.startDay) : null;
   const endDay = req.body?.endDay ? isoDayOrToday(req.body.endDay) : null;
@@ -550,8 +551,8 @@ router.post("/rules", requireRoleAdminOrDirection, async (req, res) => {
         (weekday + 1) as "isoDow",
         topic_id as "topicId",
         team_id as "teamId",
-        start_day as "startDay",
-        end_day as "endDay",
+        to_char(start_day, 'YYYY-MM-DD') as "startDay",
+        to_char(end_day, 'YYYY-MM-DD') as "endDay",
         is_active as "isActive"
       `,
       [isoDow, topicId, teamId, startDay, endDay],
@@ -560,15 +561,12 @@ router.post("/rules", requireRoleAdminOrDirection, async (req, res) => {
     return res.status(201).json(rows[0]);
   } catch (e) {
     if (e?.code === "23505") return res.status(409).json({ error: "Already required that weekday" });
-    console.error("POST /briefings/rules error:", e);
+    console.error("POST /briefings/(rules|recurring-rules) error:", e);
     return res.status(500).json({ error: "Server error" });
   }
-});
+}
 
-/**
- * PATCH /briefings/rules/:ruleId  body: { isActive: boolean }
- */
-router.patch("/rules/:ruleId", requireRoleAdminOrDirection, async (req, res) => {
+async function patchBriefingRule(req, res) {
   const ruleId = String(req.params.ruleId || "").trim();
   const isActive = req.body?.isActive;
 
@@ -581,7 +579,14 @@ router.patch("/rules/:ruleId", requireRoleAdminOrDirection, async (req, res) => 
       update briefing_required_rules
       set is_active = $2
       where id = $1
-      returning id, (weekday + 1) as "isoDow", topic_id as "topicId", team_id as "teamId", is_active as "isActive"
+      returning
+        id,
+        (weekday + 1) as "isoDow",
+        topic_id as "topicId",
+        team_id as "teamId",
+        is_active as "isActive",
+        to_char(start_day, 'YYYY-MM-DD') as "startDay",
+        to_char(end_day, 'YYYY-MM-DD') as "endDay"
       `,
       [ruleId, isActive],
     );
@@ -589,15 +594,12 @@ router.patch("/rules/:ruleId", requireRoleAdminOrDirection, async (req, res) => 
     if (rows.length === 0) return res.status(404).json({ error: "Rule not found" });
     return res.json(rows[0]);
   } catch (e) {
-    console.error("PATCH /briefings/rules/:ruleId error:", e);
+    console.error("PATCH /briefings/(rules|recurring-rules)/:ruleId error:", e);
     return res.status(500).json({ error: "Server error" });
   }
-});
+}
 
-/**
- * DELETE /briefings/rules/:ruleId
- */
-router.delete("/rules/:ruleId", requireRoleAdminOrDirection, async (req, res) => {
+async function deleteBriefingRule(req, res) {
   const ruleId = String(req.params.ruleId || "").trim();
   if (!ruleId) return res.status(400).json({ error: "Missing ruleId" });
 
@@ -606,9 +608,21 @@ router.delete("/rules/:ruleId", requireRoleAdminOrDirection, async (req, res) =>
     if (rowCount === 0) return res.status(404).json({ error: "Not found" });
     return res.json({ ok: true });
   } catch (e) {
-    console.error("DELETE /briefings/rules/:ruleId error:", e);
+    console.error("DELETE /briefings/(rules|recurring-rules)/:ruleId error:", e);
     return res.status(500).json({ error: "Server error" });
   }
-});
+}
+
+// ------- Routes originales -------
+router.get("/rules", requireRoleAdminOrDirection, listBriefingRules);
+router.post("/rules", requireRoleAdminOrDirection, createBriefingRule);
+router.patch("/rules/:ruleId", requireRoleAdminOrDirection, patchBriefingRule);
+router.delete("/rules/:ruleId", requireRoleAdminOrDirection, deleteBriefingRule);
+
+// ------- ✅ Alias pour matcher ton UI (et supprimer ton 404) -------
+router.get("/recurring-rules", requireRoleAdminOrDirection, listBriefingRules);
+router.post("/recurring-rules", requireRoleAdminOrDirection, createBriefingRule);
+router.patch("/recurring-rules/:ruleId", requireRoleAdminOrDirection, patchBriefingRule);
+router.delete("/recurring-rules/:ruleId", requireRoleAdminOrDirection, deleteBriefingRule);
 
 export default router;
