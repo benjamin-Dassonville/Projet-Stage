@@ -1,4 +1,6 @@
 import 'package:go_router/go_router.dart';
+import 'package:projet_stage/pages/briefing_team_detail_page.dart';
+import 'package:projet_stage/pages/briefings_overview_page.dart';
 
 import 'auth/auth_state.dart';
 import 'auth/app_role.dart';
@@ -83,7 +85,8 @@ GoRouter createRouter(AuthState auth) {
         redirect: (context, state) => _guard(auth, state, {AppRole.chef}),
         builder: (_, state) {
           final teamId = state.pathParameters['teamId']!;
-          final date = state.uri.queryParameters['date']; // optionnel (YYYY-MM-DD)
+          final date =
+              state.uri.queryParameters['date']; // optionnel (YYYY-MM-DD)
           return BriefingTeamPage(teamId: teamId, date: date);
         },
       ),
@@ -173,6 +176,22 @@ GoRouter createRouter(AuthState auth) {
         redirect: (context, state) =>
             _guard(auth, state, {AppRole.admin, AppRole.direction}),
         builder: (_, __) => const BriefingsRecurringRulesAdminPage(),
+      ),
+
+      GoRoute(
+        path: '/briefings/overview',
+        builder: (context, state) => const BriefingsOverviewPage(),
+      ),
+      
+      GoRoute(
+        path: '/briefings/team/:teamId',
+        builder: (context, state) {
+          final teamId = state.pathParameters['teamId']!;
+          final day =
+              state.uri.queryParameters['day'] ??
+              DateTime.now().toIso8601String().substring(0, 10);
+          return BriefingTeamDetailPage(teamId: teamId, day: day);
+        },
       ),
 
       GoRoute(

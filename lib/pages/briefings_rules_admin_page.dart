@@ -39,15 +39,33 @@ class _BriefingsRecurringRulesAdminPageState
 
       // teams optionnel : si tu n'as pas /teams, ça reste vide (et l'UI proposera seulement "Toutes")
       List<Map<String, dynamic>> tms = [];
-      try {
-        final resTeams = await api.dio.get('/teams');
-        tms = (resTeams.data as List)
-            .map((e) => (e as Map).cast<String, dynamic>())
-            .toList();
+      Future<void> loadTeamsFrom(String path) async {
+        final resTeams = await api.dio.get(path);
+        final raw = resTeams.data;
+        if (raw is List) {
+          tms = raw.map((e) => (e as Map).cast<String, dynamic>()).toList();
+        } else {
+          tms = [];
+        }
+        // Normalise : parfois ça peut être label au lieu de name
+        for (var i = 0; i < tms.length; i++) {
+          final m = tms[i];
+          final name = (m['name'] ?? m['label'] ?? '').toString();
+          tms[i] = {...m, 'name': name};
+        }
         tms.sort((a, b) => ('${a['name'] ?? ''}')
             .toLowerCase()
             .compareTo(('${b['name'] ?? ''}').toLowerCase()));
-      } catch (_) {}
+      }
+      try {
+        await loadTeamsFrom('/teams-meta');
+      } catch (_) {
+        try {
+          await loadTeamsFrom('/teams');
+        } catch (_) {
+          // pas de teams
+        }
+      }
 
       final listRules = (resRules.data as List)
           .map((e) => (e as Map).cast<String, dynamic>())
@@ -237,6 +255,110 @@ class _BriefingsRecurringRulesAdminPageState
     }
   }
 
+  Future<void> _pickTeamsDialog({
+    required Set<String> selectedTeamIds,
+  }) async {
+    final searchCtrl = TextEditingController();
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final q = searchCtrl.text.trim().toLowerCase();
+
+          final filtered = teams.where((t) {
+            final id = (t['id'] ?? '').toString().toLowerCase();
+            final name = (t['name'] ?? '').toString().toLowerCase();
+            if (q.isEmpty) return true;
+            return id.contains(q) || name.contains(q);
+          }).toList();
+
+          return AlertDialog(
+            title: Text('Choisir des équipes (${selectedTeamIds.length})'),
+            content: SizedBox(
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: searchCtrl,
+                    onChanged: (_) => setLocal(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Rechercher…',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 320),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Theme.of(ctx).dividerColor),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: filtered.isEmpty
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Text('Aucun résultat.'),
+                            ),
+                          )
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (_, i) {
+                              final t = filtered[i];
+                              final tid = (t['id'] ?? '').toString();
+                              final name = (t['name'] ?? '').toString();
+                              final checked = selectedTeamIds.contains(tid);
+
+                              return CheckboxListTile(
+                                value: checked,
+                                onChanged: (v) {
+                                  if (tid.isEmpty) return;
+                                  setLocal(() {
+                                    if (v == true) {
+                                      selectedTeamIds.add(tid);
+                                    } else {
+                                      selectedTeamIds.remove(tid);
+                                    }
+                                  });
+                                },
+                                title: Text(name.isEmpty ? tid : name),
+                                subtitle: name.isEmpty ? null : Text(tid),
+                                controlAffinity: ListTileControlAffinity.leading,
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => setLocal(() => selectedTeamIds.clear()),
+                        icon: const Icon(Icons.clear_all),
+                        label: const Text('Tout décocher'),
+                      ),
+                      const Spacer(),
+                      Text('${selectedTeamIds.length} sélectionnée(s)'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   // ===================== DIALOG CREATE / EDIT (BACKEND MATCH) =====================
   Future<void> _createOrEditRuleDialog({Map<String, dynamic>? initial}) async {
     final isEdit = initial != null;
@@ -251,9 +373,14 @@ class _BriefingsRecurringRulesAdminPageState
     String? topicId = (initial?['topicId'] ?? '').toString();
     if (topicId != null && topicId.trim().isEmpty) topicId = null;
 
-    // teamId optionnel
-    String? teamId = (initial?['teamId'] ?? '').toString();
-    if (teamId != null && teamId.trim().isEmpty) teamId = null;
+    // ✅ teams multi (vide = toutes)
+    final selectedTeamIds = <String>{};
+    final initialTeamId = (initial?['teamId'] ?? '').toString().trim();
+    if (initialTeamId.isNotEmpty) {
+      selectedTeamIds.add(initialTeamId);
+    }
+    // "Toutes les équipes" = true si aucune équipe sélectionnée
+    bool allTeams = selectedTeamIds.isEmpty;
 
     final startCtrl =
         TextEditingController(text: (initial?['startDay'] ?? '').toString());
@@ -359,33 +486,60 @@ class _BriefingsRecurringRulesAdminPageState
 
                       const Divider(height: 20),
 
-                      // Équipe optionnelle
-                      Row(
-                        children: [
-                          const Expanded(child: Text('Équipe :')),
-                          const SizedBox(width: 10),
-                          DropdownButton<String?>(
-                            value: teamId,
-                            items: [
-                              const DropdownMenuItem<String?>(
-                                value: null,
-                                child: Text('Toutes'),
-                              ),
-                              ...teams.map((t) {
-                                final id = (t['id'] ?? '').toString();
-                                final name = (t['name'] ?? '').toString();
-                                return DropdownMenuItem<String?>(
-                                  value: id,
-                                  child: Text(name.isEmpty ? id : name),
-                                );
-                              }).toList(),
-                            ],
-                            onChanged: (teams.isEmpty)
-                                ? null
-                                : (v) => setLocal(() => teamId = v),
-                          ),
-                        ],
+                      // ✅ Équipes (multi) : aucune sélection = "Toutes"
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Toutes les équipes'),
+                        subtitle: Text(
+                          teams.isNotEmpty
+                              ? 'Désactive pour cibler une ou plusieurs équipes.'
+                              : 'Aucune équipe disponible',
+                        ),
+                        value: allTeams,
+                        onChanged: teams.isNotEmpty
+                            ? (v) async {
+                                setLocal(() {
+                                  allTeams = v;
+                                  if (allTeams) {
+                                    selectedTeamIds.clear();
+                                  }
+                                });
+                                // Si on passe en mode ciblé => ouvre le sélecteur
+                                if (!allTeams) {
+                                  await _pickTeamsDialog(selectedTeamIds: selectedTeamIds);
+                                  // Si rien choisi => on revient à "Toutes"
+                                  if (selectedTeamIds.isEmpty) {
+                                    setLocal(() => allTeams = true);
+                                  }
+                                }
+                              }
+                            : null,
                       ),
+                      if (!allTeams && teams.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Équipes sélectionnées : ${selectedTeamIds.length}',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () async {
+                                await _pickTeamsDialog(selectedTeamIds: selectedTeamIds);
+                                if (selectedTeamIds.isEmpty) {
+                                  setLocal(() => allTeams = true);
+                                } else {
+                                  setLocal(() {});
+                                }
+                              },
+                              icon: const Icon(Icons.edit),
+                              label: const Text('Modifier'),
+                            ),
+                          ],
+                        ),
+                      ],
 
                       const SizedBox(height: 8),
 
@@ -441,36 +595,42 @@ class _BriefingsRecurringRulesAdminPageState
 
     final startDay = startCtrl.text.trim().isEmpty ? null : startCtrl.text.trim();
     final endDay = endCtrl.text.trim().isEmpty ? null : endCtrl.text.trim();
+    // ✅ Targets : null => toutes, sinon une liste d'ids
+    final targetTeamIds = allTeams ? <String?>[null] : selectedTeamIds.map((e) => e as String?).toList();
 
     try {
       final api = ApiClient();
 
       if (!isEdit) {
-        final res = await api.dio.post('/briefings/recurring-rules', data: {
-          'isoDow': isoDow,
-          'topicId': topicId,
-          'teamId': teamId, // null => toutes
-          'startDay': startDay,
-          'endDay': endDay,
-          // isActive n'est pas géré dans ton POST backend (il met true).
-          // On le garde côté UI : si tu veux gérer "création inactive", faut adapter le backend.
-        });
-
-        final created = (res.data as Map).cast<String, dynamic>();
-        if (!mounted) return;
-
-        // Si l'utilisateur voulait inactive au moment de la création, on fait un PATCH derrière.
-        Map<String, dynamic> finalRule = created;
-        if (isActive == false) {
-          final patch = await api.dio.patch(
-            '/briefings/recurring-rules/${created['id']}',
-            data: {'isActive': false},
-          );
-          finalRule = (patch.data as Map).cast<String, dynamic>();
+        final createdRules = <Map<String, dynamic>>[];
+        final errors = <String>[];
+        for (final tid in targetTeamIds) {
+          try {
+            final res = await api.dio.post('/briefings/recurring-rules', data: {
+              'isoDow': isoDow,
+              'topicId': topicId,
+              'teamId': tid, // null => toutes
+              'startDay': startDay,
+              'endDay': endDay,
+            });
+            final created = (res.data as Map).cast<String, dynamic>();
+            // si l'utilisateur veut inactive, on patch derrière (ton backend POST met true)
+            Map<String, dynamic> finalRule = created;
+            if (isActive == false) {
+              final patch = await api.dio.patch(
+                '/briefings/recurring-rules/${created['id']}',
+                data: {'isActive': false},
+              );
+              finalRule = (patch.data as Map).cast<String, dynamic>();
+            }
+            createdRules.add(finalRule);
+          } catch (e) {
+            errors.add('team=${tid ?? "ALL"} → $e');
+          }
         }
-
+        if (!mounted) return;
         setState(() {
-          rules = [finalRule, ...rules];
+          rules = [...createdRules, ...rules];
           rules.sort((a, b) {
             final ad = int.tryParse('${a['isoDow'] ?? 0}') ?? 0;
             final bd = int.tryParse('${b['isoDow'] ?? 0}') ?? 0;
@@ -480,10 +640,15 @@ class _BriefingsRecurringRulesAdminPageState
             return at.compareTo(bt);
           });
         });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Règle créée ✅')),
-        );
+        if (errors.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Règle(s) créée(s) ✅ (${createdRules.length})')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Création partielle: ${createdRules.length} ok, ${errors.length} erreurs')),
+          );
+        }
         return;
       }
 
@@ -496,14 +661,14 @@ class _BriefingsRecurringRulesAdminPageState
       // - recréer une règle avec les nouveaux champs
       // - remettre l'activation.
       //
-      // C’est le seul moyen sans toucher au backend.
+      // C'est le seul moyen sans toucher au backend.
       final ok = await _confirm(
         title: 'Modifier la règle',
         message:
             "Ton backend ne permet pas de modifier le jour / sujet / équipe / période (PATCH = isActive seulement).\n\n"
             "Je peux appliquer la modification en faisant :\n"
-            "1) suppression de l’ancienne règle\n"
-            "2) création d’une nouvelle règle\n\n"
+            "1) suppression de l'ancienne règle\n"
+            "2) création d'une nouvelle règle\n\n"
             "Continuer ?",
         okText: 'Continuer',
       );
@@ -516,7 +681,7 @@ class _BriefingsRecurringRulesAdminPageState
       final resNew = await api.dio.post('/briefings/recurring-rules', data: {
         'isoDow': isoDow,
         'topicId': topicId,
-        'teamId': teamId,
+        'teamId': targetTeamIds.first, // en mode edit, on ne prend que la première
         'startDay': startDay,
         'endDay': endDay,
       });

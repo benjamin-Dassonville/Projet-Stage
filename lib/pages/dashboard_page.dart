@@ -306,7 +306,7 @@ class _DashboardPageState extends State<DashboardPage> {
             onPressed: () => context.push('/calendar'),
             icon: const Icon(Icons.calendar_month),
             style: IconButton.styleFrom(
-              foregroundColor: Colors.black, // Test avec couleur fixe
+              foregroundColor: Colors.black,
             ),
           ),
           IconButton(
@@ -314,7 +314,7 @@ class _DashboardPageState extends State<DashboardPage> {
             icon: const Icon(Icons.refresh),
             tooltip: 'Rafraîchir',
             style: IconButton.styleFrom(
-              foregroundColor: Colors.black, // Test avec couleur fixe
+              foregroundColor: Colors.black,
             ),
           ),
         ],
@@ -341,10 +341,11 @@ class _DashboardPageState extends State<DashboardPage> {
                           spacing: 12,
                           runSpacing: 12,
                           children: [
-                            SizedBox(
-                              width: 200,
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(minWidth: 220, maxWidth: 260),
                               child: DropdownButtonFormField<String>(
-                                initialValue: range,
+                                isExpanded: true,
+                                value: range,
                                 decoration: const InputDecoration(
                                   labelText: 'Période',
                                   border: OutlineInputBorder(),
@@ -363,24 +364,36 @@ class _DashboardPageState extends State<DashboardPage> {
                               ),
                             ),
                             if (loadingMeta)
-                              const Text('Chargement des chefs/équipes...')
+                              const Padding(
+                                padding: EdgeInsets.only(top: 18),
+                                child: Text('Chargement des chefs/équipes...'),
+                              )
                             else
-                              SizedBox(
-                                width: 250,
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(minWidth: 260, maxWidth: 340),
                                 child: DropdownButtonFormField<String?>(
-                                  initialValue: selectedChefId,
+                                  isExpanded: true,
+                                  value: selectedChefId,
                                   decoration: const InputDecoration(
                                     labelText: "Chef d'équipe (optionnel)",
                                     border: OutlineInputBorder(),
                                   ),
                                   items: [
-                                    const DropdownMenuItem<String?>(value: null, child: Text('Tous')),
-                                    ...chefs.map(
-                                      (c) => DropdownMenuItem<String?>(
-                                        value: c['id'] as String,
-                                        child: Text(c['name'] as String),
-                                      ),
+                                    const DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('Tous', overflow: TextOverflow.ellipsis),
                                     ),
+                                    ...chefs.map((c) {
+                                      final id = (c['id'] ?? '').toString();
+                                      final name = (c['name'] ?? '').toString();
+                                      return DropdownMenuItem<String?>(
+                                        value: id,
+                                        child: Text(
+                                          name.isEmpty ? id : name,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      );
+                                    }),
                                   ],
                                   onChanged: (v) {
                                     setState(() {
@@ -392,22 +405,31 @@ class _DashboardPageState extends State<DashboardPage> {
                                 ),
                               ),
                             if (!loadingMeta)
-                              SizedBox(
-                                width: 200,
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(minWidth: 240, maxWidth: 340),
                                 child: DropdownButtonFormField<String?>(
-                                  initialValue: selectedTeamId,
+                                  isExpanded: true,
+                                  value: selectedTeamId,
                                   decoration: const InputDecoration(
                                     labelText: 'Équipe (optionnel)',
                                     border: OutlineInputBorder(),
                                   ),
                                   items: [
-                                    const DropdownMenuItem<String?>(value: null, child: Text('Toutes')),
-                                    ...teams.map(
-                                      (t) => DropdownMenuItem<String?>(
-                                        value: t['id'] as String,
-                                        child: Text(t['name'] as String),
-                                      ),
+                                    const DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('Toutes', overflow: TextOverflow.ellipsis),
                                     ),
+                                    ...teams.map((t) {
+                                      final id = (t['id'] ?? '').toString();
+                                      final name = (t['name'] ?? '').toString();
+                                      return DropdownMenuItem<String?>(
+                                        value: id,
+                                        child: Text(
+                                          name.isEmpty ? id : name,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      );
+                                    }),
                                   ],
                                   onChanged: (v) {
                                     setState(() {
@@ -425,6 +447,15 @@ class _DashboardPageState extends State<DashboardPage> {
                           'Vue: ${rangeLabel(range)}'
                           '${selectedChefId != null ? ' • Chef: $selectedChefId' : ''}'
                           '${selectedTeamId != null ? ' • Équipe: ${teamName(selectedTeamId)}' : ''}',
+                        ),
+                        const SizedBox(height: 16),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: FilledButton.icon(
+                            onPressed: () => context.push('/briefings/overview'),
+                            icon: const Icon(Icons.checklist),
+                            label: const Text('Briefing'),
+                          ),
                         ),
                       ],
                     ),
