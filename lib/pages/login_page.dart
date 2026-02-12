@@ -2,29 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app_state.dart';
-import '../auth/app_role.dart';
 
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    Widget roleButton({
-      required IconData icon,
-      required String label,
-      required AppRole role,
-    }) {
-      return FilledButton.icon(
-        onPressed: () async {
-          // AuthState exposes devLogin(role: ...) in this project.
-          await authState.devLogin(role: role);
-          if (context.mounted) context.go('/');
-        },
-        icon: Icon(icon),
-        label: Text(label),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -49,7 +32,9 @@ class LoginPage extends StatelessWidget {
                             radius: 18,
                             child: Icon(
                               Icons.shield_outlined,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onPrimaryContainer,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -63,7 +48,7 @@ class LoginPage extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  "Choisis un rôle pour la démo",
+                                  "Connexion Microsoft",
                                   style: Theme.of(context).textTheme.bodyMedium,
                                 ),
                               ],
@@ -72,76 +57,20 @@ class LoginPage extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 18),
-
-                      // Responsive :
-                      // - PC / large : 3 boutons alignés et bien espacés
-                      // - Mobile : un sous l'autre
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isWide = constraints.maxWidth >= 520;
-
-                          if (isWide) {
-                            return Row(
-                              children: [
-                                Expanded(
-                                  child: roleButton(
-                                    icon: Icons.badge_outlined,
-                                    label: 'Chef',
-                                    role: AppRole.chef,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: roleButton(
-                                    icon: Icons.admin_panel_settings_outlined,
-                                    label: 'Admin',
-                                    role: AppRole.admin,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: roleButton(
-                                    icon: Icons.apartment_outlined,
-                                    label: 'Direction',
-                                    role: AppRole.direction,
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              roleButton(
-                                icon: Icons.badge_outlined,
-                                label: 'Chef',
-                                role: AppRole.chef,
-                              ),
-                              const SizedBox(height: 12),
-                              roleButton(
-                                icon: Icons.admin_panel_settings_outlined,
-                                label: 'Admin',
-                                role: AppRole.admin,
-                              ),
-                              const SizedBox(height: 12),
-                              roleButton(
-                                icon: Icons.apartment_outlined,
-                                label: 'Direction',
-                                role: AppRole.direction,
-                              ),
-                            ],
+                      FilledButton.icon(
+                        onPressed: () async {
+                          await authState.signInWithMicrosoft(
+                            webRedirectTo: 'http://localhost:8080',
                           );
                         },
+                        icon: const Icon(Icons.login),
+                        label: const Text('Se connecter avec Microsoft'),
                       ),
-
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
                       Text(
-                        "Astuce : tu peux changer de rôle à tout moment via la déconnexion.",
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        "Si tu es “non assigné”, tu seras mis en attente jusqu’à validation.",
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),

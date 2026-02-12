@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-
-import '../app_state.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiClient {
   static const String _baseUrl = 'http://localhost:3000';
@@ -15,25 +14,23 @@ class ApiClient {
             connectTimeout: const Duration(seconds: 8),
             receiveTimeout: const Duration(seconds: 15),
             sendTimeout: const Duration(seconds: 15),
-            headers: {
+            headers: const {
               'Content-Type': 'application/json',
             },
           ),
         ) {
-    // ✅ IMPORTANT: ajoute Authorization à CHAQUE requête, en fonction du rôle courant
     dio.interceptors.add(
       InterceptorsWrapper(
-        onRequest: (options, handler) {
-          // Toujours s'assurer qu'on a une map
+        onRequest: (options, handler) async {
+          // copie safe
           options.headers = Map<String, dynamic>.from(options.headers);
 
-          final role = authState.role;
+          final session = Supabase.instance.client.auth.currentSession;
+          final token = session?.accessToken;
 
-          if (role != null) {
-            // format attendu par ton backend: "Dev admin" / "Dev direction" / "Dev chef"
-            options.headers['Authorization'] = 'Dev ${role.name}';
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
           } else {
-            // si pas de rôle -> pas de header (sinon backend renvoie 401 de toute façon)
             options.headers.remove('Authorization');
           }
 
@@ -42,7 +39,6 @@ class ApiClient {
       ),
     );
 
-    // Logger utile (tu peux le laisser)
     dio.interceptors.add(
       LogInterceptor(
         request: true,

@@ -85,7 +85,6 @@ class HomePage extends StatelessWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: "Fermer",
                         onPressed: () => Navigator.pop(sheetContext),
                         icon: const Icon(Icons.close),
                       ),
@@ -95,19 +94,10 @@ class HomePage extends StatelessWidget {
                   TextField(
                     controller: searchCtrl,
                     onChanged: (_) => setLocal(() {}),
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       hintText: "Rechercher (nom / id)…",
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: searchCtrl.text.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                searchCtrl.clear();
-                                setLocal(() {});
-                              },
-                            ),
-                      border: const OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -153,17 +143,21 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final role = authState.role;
+    final roleLabel = role.label;
 
-    // Visibilité boutons (UI uniquement)
     final canOpenTeam = role == AppRole.chef;
     final canRoles =
-        role == AppRole.chef || role == AppRole.direction || role == AppRole.admin;
+        role == AppRole.chef ||
+        role == AppRole.direction ||
+        role == AppRole.admin;
     final canControlTeams =
-        role == AppRole.chef || role == AppRole.admin || role == AppRole.direction;
+        role == AppRole.chef ||
+        role == AppRole.admin ||
+        role == AppRole.direction;
     final canDashboard = role == AppRole.admin;
-
-    // 🔥 NOUVEAU : accès gestion briefings (admin / direction)
     final canBriefingsAdmin =
+        role == AppRole.admin || role == AppRole.direction;
+    final canAccountRoles =
         role == AppRole.admin || role == AppRole.direction;
 
     final actions = <Widget>[
@@ -173,29 +167,30 @@ class HomePage extends StatelessWidget {
           icon: const Icon(Icons.groups_outlined),
           label: const Text('Ouvrir équipe'),
         ),
-
       if (canRoles)
         FilledButton.tonalIcon(
           onPressed: () => context.push('/roles'),
           icon: const Icon(Icons.inventory_2_outlined),
           label: const Text('Rôles & équipements'),
         ),
-
       if (canControlTeams)
         OutlinedButton.icon(
           onPressed: () => context.push('/control-teams'),
           icon: const Icon(Icons.manage_accounts_outlined),
           label: const Text('Contrôle équipes'),
         ),
-
-      // ✅ BOUTON BRIEFINGS ADMIN
       if (canBriefingsAdmin)
         FilledButton.icon(
           onPressed: () => context.push('/briefings/admin'),
           icon: const Icon(Icons.assignment_turned_in_outlined),
           label: const Text('Gestion des briefings'),
         ),
-
+      if (canAccountRoles)
+        FilledButton.icon(
+          onPressed: () => context.push('/admin/account-roles'),
+          icon: const Icon(Icons.admin_panel_settings_outlined),
+          label: const Text('Gestion des comptes'),
+        ),
       if (canDashboard)
         FilledButton.tonalIcon(
           onPressed: () => context.push('/dashboard'),
@@ -210,7 +205,6 @@ class HomePage extends StatelessWidget {
         title: const Text('Accueil'),
         actions: [
           IconButton(
-            tooltip: 'Déconnexion',
             onPressed: () async {
               await authState.logout();
               if (context.mounted) context.go('/login');
@@ -238,25 +232,24 @@ class HomePage extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Rôle : ${role?.label ?? 'Non connecté'}',
+                        'Rôle : $roleLabel',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                       const SizedBox(height: 18),
-
                       LayoutBuilder(
                         builder: (context, constraints) {
                           final isPhone = constraints.maxWidth < 520;
 
                           if (actions.isEmpty) {
-                            return Text(
+                            return const Text(
                               "Aucune action disponible pour ce rôle.",
-                              style: Theme.of(context).textTheme.bodyMedium,
                             );
                           }
 
                           if (isPhone) {
                             return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.stretch,
                               children: [
                                 for (int i = 0; i < actions.length; i++) ...[
                                   actions[i],

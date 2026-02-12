@@ -1,4 +1,9 @@
+import "./env.js";
 import express from "express";
+import dotenv from "dotenv";
+dotenv.config({ path: "api/.env" });
+
+
 import cors from "cors";
 
 import dashboardRoutes from "./routes/dashboard.js";
@@ -16,6 +21,10 @@ import missesRoutes from "./routes/misses.js";
 import calendarRouter from "./routes/calendar.js";
 import checkAuditsRouter from "./routes/check_audits.js";
 import briefingsRouter from "./routes/briefings.js";
+
+
+import adminUsersRouter from "./routes/admin_users.js";
+
 
 
 const app = express();
@@ -47,6 +56,7 @@ app.use("/calendar", requireAuth, calendarRouter);
 app.use("/chefs", chefsRouter);
 app.use("/health", healthRoutes);
 app.use("/check-audits", checkAuditsRouter);
+app.use("/admin", adminUsersRouter);
 
 
 

@@ -1,13 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
-import 'auth/auth_state.dart';
+import 'auth/auth_state.dart' as app;
 import 'app_state.dart';
 import 'router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final auth = AuthState();
+  await dotenv.load(fileName: ".env");
+
+  final url = dotenv.env['SUPABASE_URL'];
+  final anon = dotenv.env['SUPABASE_ANON_KEY'];
+
+  if (url == null || url.isEmpty) {
+    throw Exception('SUPABASE_URL manquant dans .env');
+  }
+  if (anon == null || anon.isEmpty) {
+    throw Exception('SUPABASE_ANON_KEY manquant dans .env');
+  }
+
+  await sb.Supabase.initialize(
+    url: url,
+    anonKey: anon,
+  );
+
+  final auth = app.AuthState();
   await auth.init();
   authState = auth;
 
@@ -15,13 +34,12 @@ Future<void> main() async {
 }
 
 class App extends StatelessWidget {
-  final AuthState auth;
-
+  final app.AuthState auth;
   const App({super.key, required this.auth});
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF0A66C2); // bleu "pro" (type LinkedIn)
+    const seed = Color(0xFF0A66C2);
     final colorScheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.light,
@@ -41,9 +59,11 @@ class App extends StatelessWidget {
           fontSize: 18,
           fontWeight: FontWeight.w600,
         ),
-        toolbarTextStyle: TextStyle(color: colorScheme.onSurface, fontSize: 14),
+        toolbarTextStyle: TextStyle(
+          color: colorScheme.onSurface,
+          fontSize: 14,
+        ),
       ),
-      // Flutter stable expects CardThemeData for ThemeData.cardTheme.
       cardTheme: CardThemeData(
         elevation: 0.5,
         color: colorScheme.surface,
